@@ -39,7 +39,7 @@ To run the compiled binary file, an example command is given below:
 >$ ./bin/bist -d video_directory/ -f flow_directory/ -o output_directory/ -n 25 --iperc_coeff 4.0 --thresh_new 0.05 --read_video 1
 ```
 
-The example highlights important arguments such as io directories, initial superpixel size (n), the temporally coherent split step hyperparameter (iperc_coeff, aka $\gamma$), and the threshold to relabel a propogated superpixel as a new one (thresh_new, or $\varepsilon_{\text{new}}$). The last input (read_video) determines if the algorithm uses BIST (==1) or BASS (==0).
+The example highlights important arguments such as io directories, initial superpixel size (n), the temporally coherent split step hyperparameter (iperc_coeff, or $\gamma$), and the threshold to relabel a propogated superpixel as a new one (thresh_new, or $\varepsilon_{\text{new}}$). The last input (read_video) determines if the algorithm uses BIST (==1) or BASS (==0).
 
 We've included two clips to validate the installation. One clip is from the [SegTrack v2 dataset](https://web.engr.oregonstate.edu/~lif/SegTrack2/dataset.html) and the other clip is from the [DAVIS](https://davischallenge.org/) dataset. Example commands to run BIST on these clips is given below:
 
