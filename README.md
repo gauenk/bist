@@ -80,6 +80,9 @@ bist.utils.save_video(pooled, 'results/kid-results',"pooled_%05d.png")
 
 _Note_: BIST uses *forward* optical flows, so flows[T-1] == 0.
 
+## Superpixel Convolution
+
+To demonstrate the value of superpixels within deep neural networks, we present a novel layer called superpixel convolution. While more expensive than traditional convolution, this module significantly outperforms standard convolution on the example application of image denoising (by over 1.5 dB PSNR). Details about this portion of the code base will be added soon (noted April 2025).
 
 ## Citation
 
