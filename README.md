@@ -78,7 +78,7 @@ bist.utils.save_video(marked, 'results/kid-results',"border_%05d.png")
 bist.utils.save_video(pooled, 'results/kid-results',"pooled_%05d.png")
 ```
 
-_Note_: that BIST uses *forward* flows.
+_Note_: BIST uses *forward* optical flows, so flows[T-1] == 0.
 
 
 ## Citation
