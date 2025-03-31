@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
     // -- init --
     const char *direc = "image/";
     const char *fdirec = "";
-    const char *odirec = "../result/";
+    const char *odirec = "./result/";
     const char *img_ext = "jpg";
     string subdir = "";
     int sp_size = 25; // number of pixels along an axis
@@ -103,22 +103,20 @@ int main(int argc, char **argv) {
 
         if (!parse_argument(i, argc, argv, arg, "-d", direc) ||
             !parse_argument(i, argc, argv, arg, "-f", fdirec) ||
-            !parse_argument(i, argc, argv, arg, "--image_direc", direc) ||
             !parse_argument(i, argc, argv, arg, "-o", odirec) ||
             !parse_argument(i, argc, argv, arg, "-n", sp_size) ||
-            !parse_argument(i,argc,argv,arg,"--nPixels_on_side",sp_size)||
             !parse_argument(i, argc, argv, arg, "--sigma_app", sigma_app) ||
             !parse_argument(i, argc, argv, arg, "--im_size", im_size) ||
             !parse_argument(i, argc, argv, arg, "--potts", potts) ||
             !parse_argument(i, argc, argv, arg, "--alpha", alpha) ||
-            !parse_argument(i, argc, argv, arg, "--split_alpha", split_alpha) ||
+            !parse_argument(i, argc, argv, arg, "--split_alpha", split_alpha)||
             !parse_argument(i, argc, argv, arg, "--img_ext", img_ext) ||
             !parse_argument(i, argc, argv, arg, "--read_video", read_video) ||
             !parse_argument(i, argc, argv, arg, "--subdir", subdir) ||
             !parse_argument(i, argc, argv, arg, "--niters", input_niters) ||
             !parse_argument(i, argc, argv, arg, "--vid_niters", vid_niters) ||
             !parse_argument(i, argc, argv, arg, "--tgt_nspix", target_nspix) ||
-            !parse_argument(i, argc, argv, arg, "--thresh_relabel", thresh_relabel) ||
+            !parse_argument(i,argc,argv,arg,"--thresh_relabel",thresh_relabel) ||
             !parse_argument(i, argc, argv, arg, "--thresh_new", thresh_new) ||
             !parse_argument(i, argc, argv, arg, "--prop_nc", prop_nc) ||
             !parse_argument(i, argc, argv, arg, "--prop_icov", prop_icov) ||
@@ -128,12 +126,12 @@ int main(int argc, char **argv) {
             return 1;
         }
 
-        if (arg == "-n" || arg == "--nPixels_on_side") {
-            if (sp_size < 1) {
-                std::cerr << "--sp_size option requires sp_size >= 1." << std::endl;
-                return 1;
-            }
-        }
+        // if (arg == "-n") {
+        //     if (sp_size < 1) {
+        //         std::cerr << "--sp_size option requires sp_size >= 1." << std::endl;
+        //         return 1;
+        //     }
+        // }
     }
 
     // -- control the number of spix --
