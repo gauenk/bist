@@ -128,7 +128,7 @@ int main(int argc, char **argv) {
     std::string full_path = string(odirec)+subdir;
     ensureDirectoryExists(string(odirec));
     ensureDirectoryExists(full_path);
-    std::vector<string> _img_files = get_image_files(direc, img_ext, read_video);
+    std::vector<string> _img_files = get_image_files(direc, img_ext, true); // always read in order
     if (nimgs == 0){ nimgs = (int)_img_files.size(); }
     std::vector<string> img_files(_img_files.begin(), _img_files.begin() + std::min(nimgs, (int)_img_files.size()));
     printf("num files: %d\n",img_files.size());

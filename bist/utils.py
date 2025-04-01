@@ -7,7 +7,9 @@
 
 
 # -- imports --
-import os
+import os,re
+import copy
+dcopy = copy.deepcopy
 import torch as th
 import numpy as np
 import pandas as pd
@@ -21,6 +23,8 @@ from easydict import EasyDict as edict
 
 # -- local paths --
 from ._paths import *
+from .mesh import mesh
+
 
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
@@ -46,11 +50,28 @@ def get_image_root(dname):
     else:
         raise KeyError(f"Uknown dataset name [{dname}]")
 
+def get_anno_root(dname):
+    if "segtrack" in dname.lower():
+        return Path(SEGTRACKv2_ROOT)/"GroundTruth/"
+    elif "davis" in dname.lower():
+        return Path(DAVIS_ROOT)/"Annotations/480p/"
+    else:
+        raise KeyError(f"Uknown dataset name [{dname}]")
+
+
 def get_dataset_start_index(dname):
     if "segtrack" in dname.lower():
         return 1
     elif "davis" in dname.lower():
         return 0
+    else:
+        raise KeyError(f"Uknown dataset name [{dname}]")
+
+def get_dataset_ext(dname):
+    if "segtrack" in dname.lower():
+        return 'png'
+    elif "davis" in dname.lower():
+        return 'jpg'
     else:
         raise KeyError(f"Uknown dataset name [{dname}]")
 
@@ -121,12 +142,38 @@ def read_video(root):
     for image_file in image_files:
         # Read each image using thvision
         image_path = os.path.join(root, image_file)
-        image = tvio.read_image(image_path).permute(1,2,0)/255.  # shape: (H, W, C)
+        image = tvio.read_image(image_path).permute(1,2,0)  # shape: (H, W, C)
         vid.append(image.float())
     vid = th.stack(vid)
     return vid
 
-def read_spix(root,frames):
+def read_anno(root):
+
+    def _read_anno(root):
+        anno = read_video(root)[...,0].long()
+        if "segtrack" in str(root).lower(): return 1.*(anno >= 128)
+        else: return anno
+
+    has_subdirs = np.all([f.is_dir() for f in root.iterdir()])
+    if has_subdirs:
+        anno = None
+        for ix,subdir in enumerate(root.iterdir()):
+            if anno is None:
+                anno = _read_anno(subdir)
+            else:
+                tmp = _read_anno(subdir)
+                anno[np.where(tmp>0)] = ix+1
+    else:
+        anno = _read_anno(root)
+
+    return anno
+
+def read_spix(root,frames=None):
+    pattern = re.compile(r"^\d{5}\.csv$")
+    if frames is None:
+        frames = [f.name for f in root.iterdir()]
+        frames = sorted([int(f.split(".")[0]) for f in frames if pattern.match(f)])
+
     spix = []
     for frame in frames:
         fn = root / ("%05d.csv"%frame)
@@ -225,6 +272,23 @@ def read_flo(filename, precision="32"):
     return flow.astype(np.float32) # always go back to float32
 
 
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+#
+#
+#           Simple Caching
+#
+#
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+def read_cache(root,dname,vname,group,exp_id):
+    fname = root / ("%s_%s_%s_%s.csv" % (dname,vname,group,exp_id))
+    if not fname.exists(): return None
+    else: return pd.read_csv(fname,index_col=0)
+
+def save_cache(results,root,dname,vname,group,exp_id):
+    fname = root / ("%s_%s_%s_%s.csv" % (dname,vname,group,exp_id))
+    if not root.exists(): root.mkdir(parents=True)
+    pd.DataFrame(results).to_csv(fname)
 
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
@@ -246,13 +310,21 @@ def extract_self(self,kwargs,defs):
 def extract(_cfg,defs):
     return extract_defaults(_cfg,defs)
 
-# def extract_defaults(_cfg,defs):
-#     cfg = edict(dcopy(_cfg))
-#     for k in defs: cfg[k] = optional(cfg,k,defs[k])
-#     return cfg
+def extract_defaults_copy(_cfg,defs):
+    cfg = dict(dcopy(_cfg))
+    for k in defs: cfg[k] = optional(cfg,k,defs[k])
+    return cfg
 
 def extract_defaults(cfg,defs):
-    _cfg = edict()
+    _cfg = dict()
     for k in defs: _cfg[k] = optional(cfg,k,defs[k])
     return _cfg
 
+def get_exps(togrid,defaults):
+    _exps = mesh(togrid)
+    exps = []
+    for ix,exp in enumerate(_exps):
+        exp = extract_defaults_copy(exp,defaults)
+        exp['id'] = "id_"+str(ix)
+        exps.append(exp)
+    return exps

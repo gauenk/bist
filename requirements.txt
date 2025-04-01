@@ -1,7 +1,7 @@
-easydict==1.9
-einops==0.3.0
-numpy==1.17.4
-pandas==1.1.1
-Pillow==11.1.0
-torch==1.10.0
-torchvision==0.13.1+cu113
+easydict
+einops
+numpy
+pandas
+Pillow
+torch
+torchvision

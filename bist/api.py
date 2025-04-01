@@ -3,14 +3,19 @@
 # -- pytorch api --
 import math
 import torch as th
+from pathlib import Path
 from einops import rearrange,repeat
+
+# -- run c++ api --
+import subprocess
 
 # -- connect to c++/cuda api --
 import bin.bist_cuda
 from .utils import extract
+from ._paths import BIST_HOME
 
 def run(vid,flows,**kwargs):
-    
+
     # -- unpack --
     defaults = {"sp_size":25,"potts":10.0,"sigma_app":0.009,"alpha":math.log(0.5),
                 "iperc_coeff":4.0,"thresh_new":5e-2,"thresh_relabel":1e-6,
@@ -39,6 +44,44 @@ def run(vid,flows,**kwargs):
                split_alpha,target_nspix,video_mode,rgb2lab)
     return spix
 
+def run_bin(vid_root,flow_root,save_root,img_ext,**kwargs):
+
+    # -- unpack --
+    defaults = {"sp_size":25,"potts":10.0,"sigma_app":0.009,"alpha":math.log(0.5),
+                "iperc_coeff":4.0,"thresh_new":5e-2,"thresh_relabel":1e-6,
+                "prop_nc":1,"prop_icov":1,"split_alpha":0.0,"logging":0,
+                "target_nspix":0,"video_mode":True,"rgb2lab":True,"nimgs":0}
+    kwargs = extract(kwargs,defaults)
+    sp_size = kwargs['sp_size']
+    niters = sp_size
+    potts = kwargs['potts']
+    sigma_app = kwargs['sigma_app']
+    alpha = kwargs['alpha']
+    iperc_coeff = kwargs['iperc_coeff']
+    thresh_new = kwargs['thresh_new']
+    thresh_relabel = kwargs['thresh_relabel']
+    split_alpha = kwargs['split_alpha']
+    tgt_nspix = kwargs['target_nspix']
+    video_mode = kwargs['video_mode']
+    rgb2lab = kwargs['rgb2lab']
+    prop_nc = kwargs['prop_nc']
+    prop_icov = kwargs['prop_icov']
+    logging = kwargs['logging']
+    nimgs = kwargs['nimgs']
+    read_video = 1 if video_mode else 0
+    bist_bin = str(Path(BIST_HOME)/"bin/bist")
+
+    # -- ensure strings --
+    vid_root,flow_root,save_root = str(vid_root),str(flow_root),str(save_root)
+
+    # -- prepare command --
+    cmd = "%s -n %d -d %s/ -f %s/ -o %s/ --read_video %d --img_ext %s --sigma_app %2.5f --potts %2.2f --alpha %2.3f --split_alpha %2.3f --tgt_nspix %d --iperc_coeff %2.2f --thresh_relabel %1.8f --thresh_new %1.8f --prop_nc %d --prop_icov %d --logging %d --nimgs %d" % (bist_bin,sp_size,vid_root,flow_root,save_root,read_video,img_ext,sigma_app,potts,alpha,split_alpha,tgt_nspix,iperc_coeff,thresh_relabel,thresh_new,prop_nc,prop_icov,logging,nimgs)
+
+    # -- run binary --
+    print(cmd)
+    output = subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout
+    return output
+
 def get_marked_video(vid,spix,color):
     color = color.cuda().contiguous().float()
     islast = vid.shape[-1] == 3
@@ -52,12 +95,13 @@ def shift_labels(labels,spix,flow,sizes=None):
     shifted = bin.bist_cuda.shift_labels(labels,spix,flow,sizes,nspix)
     return shifted
 
-def get_pooled_video(vid, mask):
+def get_pooled_video(vid, mask, use3d=False):
     """
     Compute the average value of the vid for each unique mask value and return both:
     - "down": shape (T, S, C), where S is the max mask value + 1
     - "pool": shape (T, H, W, C), where each pixel is replaced by its mask's average value
     """
+
     vid = vid.float()  # Ensure the video tensor is float
     T, H, W, C = vid.shape  # Unpack the shape with (T, H, W, C)
     mask = mask.long()  # Ensure mask is long type for indexing
@@ -73,6 +117,11 @@ def get_pooled_video(vid, mask):
     # Scatter reduce to compute the sum per mask value
     down.scatter_reduce_(1, mask_flat.unsqueeze(2).expand(-1, -1, C), vid_flat, reduce="sum")
     count.scatter_reduce_(1, mask_flat.unsqueeze(2), th.ones_like(vid_flat), reduce="sum")
+
+    # Further reduce across T if needed
+    if use3d:
+        down = down.sum(0,keepdim=True).repeat(T,1,1)
+        count = count.sum(0,keepdim=True).repeat(T,1,1)
 
     # Avoid division by zero
     count[count == 0] = 1

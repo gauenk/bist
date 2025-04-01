@@ -25,9 +25,10 @@ lib/*egg-info/
 *~
 \#*
 \.\#*
+dev/*
 lib/hids.egg-info/
 lib/build
-
+*.ccache-log
 *.swp
 *.swo
 
