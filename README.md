@@ -36,7 +36,7 @@ BIST is written in C++/CUDA. The source code can be compiled into an executable 
 To run the compiled binary file, an example command is given below:
 
 ```bash
->$ ./bin/bist -d video_directory/ -f flow_directory/ -o output_directory/ -n 25 --iperc_coeff 4.0 --thresh_new 0.05 --read_video 1
+./bin/bist -d video_directory/ -f flow_directory/ -o output_directory/ -n 25 --iperc_coeff 4.0 --thresh_new 0.05 --read_video 1
 ```
 
 The example highlights important arguments such as io directories, initial superpixel size (n), the temporally coherent split step hyperparameter (iperc_coeff, or $\gamma$), and the threshold to relabel a propogated superpixel as a new one (thresh_new, or $\varepsilon_{\text{new}}$). The last input (read_video) determines if the algorithm uses BIST (==1) or BASS (==0).
@@ -57,19 +57,21 @@ An example script to use the BIST Python API is detailed below:
 
 ```python
 import bist
+import torch as th
 
 # Read the video & optical flow
 vid = bist.utils.read_video("examples/kid-football/imgs")
 flows = bist.utils.read_flows("examples/kid-football/flows")
-# vid.shape = (T,C,H,W)
-# flows.shape = (T,2,H,W)
+# vid.shape = (T,H,W,C)
+# flows.shape = (T,H,W,2)
 
 # Run BIST
-kwargs = {"n":15,"read_video":1.0,"iperc_coeff":4.0,"thresh_new":0.05,'rgb2lab':True}
-spix = bist.run_bist(vid,flows,**kwargs)
+kwargs = {"n":25,"read_video":True,"iperc_coeff":4.0,"thresh_new":thresh_new,'rgb2lab':True}
+spix = bist.run(vid,flows,**kwargs)
 
 # Mark the image with the superpixels
-marked = bist.get_marked_video(video,spix)
+color = th.tensor([0.0,0.0,1.0]) # color of border
+marked = bist.get_marked_video(vid,spix,color)
 
 # Computer the superpixel-pooled video
 pooled = bist.get_pooled_video(video,spix)
