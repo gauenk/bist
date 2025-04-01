@@ -1,6 +1,6 @@
 # Bayesian-Inspired Space-Time Superpixels (BIST)
 
-Bayesian-Inspired Space-Time Superpixels (BIST) is a fast, temporally-coherent space-time superpixel method that achieves state-of-the-art benchmark results. The method is Bayesian-Inspired, rather than actually Bayesian, since the split step uses a heuristic modification of the original Hastings ratio. This modification is a core novelty of our method, and dramtically reduces the number of superpixels. BIST is frequently more than twice as fast as BASS, and is over 30 times faster than other space-time superpixel methods with favorable (and sometimes superior) quality. Specifically, BIST runs at 60 frames per second while TSP runs at about 2 frames per second. Additionally, to garner interest in superpixels, this paper demonstrates their use within deep neural networks. We present a superpixel-weighted convolution layer for single-image denoising that outperforms standard convolution by over 1.5 dB PSNR.
+Bayesian-Inspired Space-Time Superpixels (BIST) is a fast, temporally-coherent space-time superpixel method that achieves state-of-the-art benchmark results. The method is Bayesian-Inspired, rather than actually Bayesian, since the split step uses a heuristic modification of the theoretically correct Hastings ratio. This modification is a core novelty of our method, and dramtically reduces the number of superpixels. BIST is frequently more than twice as fast as BASS, and is over 30 times faster than other space-time superpixel methods with favorable (and sometimes superior) quality. Specifically, BIST runs at 60 frames per second while TSP runs at about 2 frames per second. Additionally, to garner interest in superpixels, this paper demonstrates their use within deep neural networks. We present a superpixel-weighted convolution layer for single-image denoising that outperforms standard convolution by over 1.5 dB PSNR.
 
 <p align="center">
 <img src="assets/kid-football.gif" width="500">
@@ -82,7 +82,7 @@ bist.utils.save_video(marked, 'results/kid-football',"border_%05d.png")
 bist.utils.save_video(pooled, 'results/kkid-football',"pooled_%05d.png")
 ```
 
-_Note_: BIST uses *forward* optical flows.
+_Note_: BIST uses *forward* optical flows. [The flow files for some sequences can be downloaded here](https://drive.google.com/drive/folders/1598mrD5gSSM-cYLeNOnLTeXDwE2zYCVU?usp=sharing), but they are too big to host them all.
 
 ## Superpixel Convolution
 
