@@ -24,7 +24,7 @@
 using namespace std;
 
 #include "structs.h"
-#include "demo_utils.h"
+#include "main_utils.h"
 #include "init_utils.h"
 #include "sp_pooling.h"
 #include "rgb2lab.h"
@@ -71,6 +71,18 @@ void show_usage(const std::string &program_name) {
               << "  --read_video BOOL         Read a video (true) or images (false)\n"
               << "  --subdir DIR              Set subdirectory (default: none)\n";
 }
+
+
+
+/********* Create a directory if it doesn't exist. ***********/
+void ensureDirectoryExists(const std::string& path) {
+  if (access(path.c_str(), F_OK) == -1) { // Check if directory exists
+      if (mkdir(path.c_str(), 0755) != 0) {
+        throw std::runtime_error("Failed to create directory: " + path);
+      }
+  }
+}
+
 
 
 void save_spix_gpu(cv::String fname, int* spix, int height, int width){

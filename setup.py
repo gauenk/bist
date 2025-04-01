@@ -7,7 +7,10 @@ import os
 # os.environ['TORCH_EXTENSION_SKIP_NVCC_GEN_DEPENDENCIES'] = '1' # "1" # for fasterb
 os.environ['TORCH_EXTENSION_SKIP_NVCC_GEN_DEPENDENCIES'] = '0' # "1" # for fasterb
 
-
+# Make sure the bin directory exists
+if not os.path.exists('bin'):
+    os.makedirs('bin')
+    
 from setuptools import setup, find_packages
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
@@ -17,12 +20,12 @@ setup(
     install_requires=[],
     package_dir={"": "."},
     packages=find_packages("."),
-    package_data={'': ['*.so']},
+    package_data={'bin': ['*.so']},
     include_package_data=True,
     ext_modules=[
 
         # -- keep me --
-        CUDAExtension('bist_cuda', [
+        CUDAExtension('bin.bist_cuda', [
             # -- shared utils --
             "bist/csrc/pyapi.cu",
             "bist/csrc/init_utils.cu",
@@ -45,12 +48,13 @@ setup(
             "bist/csrc/relabel.cu",
             "bist/csrc/logger.cu",
             "bist/csrc/bass.cu",
-            "bist/csrc/prop.cu",
+            "bist/csrc/bist.cu",
             # -- pybind --
             "bist/csrc/pybind.cpp",
         ],
         libraries=['cuda', 'cublas', 'cudadevrt'],
-        extra_compile_args={'cxx': ['-g','-w'],'nvcc': ['-w','--extended-lambda']}),
+        extra_compile_args={'cxx': ['-g','-w'],'nvcc': ['-w','--extended-lambda']},
+        library_dirs=['bin'],),
     ],
     cmdclass={'build_ext': BuildExtension},
 )

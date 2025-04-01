@@ -13,8 +13,6 @@
 #include <cuda_runtime.h>
 
 // -- local import --
-// #include "seg_utils.h"
-// #include "demo_utils.h"
 #include "update_seg.h"
 #include "init_utils.h"
 #include "fill_missing.h"

@@ -14,11 +14,11 @@ find_package( OpenCV REQUIRED )
 include_directories(${OpenCV_INCLUDE_DIRS})
 
 set(SHARED_SOURCES
-  bist/csrc/demo_utils.cu
+  bist/csrc/main_utils.cu
   bist/csrc/file_io.cpp
   bist/csrc/logger.cu
   bist/csrc/bass.cu
-  bist/csrc/prop.cu
+  bist/csrc/bist.cu
   bist/csrc/init_utils.cu
   bist/csrc/init_seg.cu
   bist/csrc/init_sparams.cu
@@ -40,7 +40,7 @@ set(SHARED_SOURCES
   bist/csrc/lots_of_merge.cu
 )
 
-cuda_add_executable(bist bist/csrc/bist.cu ${SHARED_SOURCES})
+cuda_add_executable(bist bist/csrc/main.cu ${SHARED_SOURCES})
 target_link_libraries(bist ${OpenCV_LIBS} cuda cublas cudadevrt)
 set_target_properties(bist PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin

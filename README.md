@@ -44,9 +44,11 @@ The example highlights important arguments such as io directories, initial super
 We've included two clips to validate the installation. One clip is from the [SegTrack v2 dataset](https://web.engr.oregonstate.edu/~lif/SegTrack2/dataset.html) and the other clip is from the [DAVIS](https://davischallenge.org/) dataset. Example commands to run BIST on these clips is given below:
 
 ```bash
->$ ./bin/bist -d data/examples/hummingbird/imgs -f data/examples/hummingbird/flows/ -o results/hummingbird/ -n 25 --iperc_coeff 4.0 --thresh_new 0.05 --read_video 1
+./bin/bist -d data/examples/hummingbird/imgs/ -f data/examples/hummingbird/flows/ -o results/hummingbird/ -n 25 --iperc_coeff 4.0 --thresh_new 0.05 --read_video 1
+```
 
->$ ./bin/bist -d data/examples/kid-football/imgs -f data/examples/kid-football/flows/ -o results/kid-football/ -n 25 --iperc_coeff 4.0 --thresh_new 0.05 --read_video 1
+```bash
+./bin/bist -d data/examples/kid-football/imgs/ -f data/examples/kid-football/flows/ -o results/kid-football/ -n 25 --iperc_coeff 4.0 --thresh_new 0.05 --read_video 1
 ```
 
 ### Using the Python API
@@ -73,12 +75,12 @@ marked = bist.get_marked_video(video,spix)
 pooled = bist.get_pooled_video(video,spix)
 
 # Save or display the denoised image
-bist.utils.save_spix(spix, 'results/kid-results',"%05d.csv")
-bist.utils.save_video(marked, 'results/kid-results',"border_%05d.png")
-bist.utils.save_video(pooled, 'results/kid-results',"pooled_%05d.png")
+bist.utils.save_spix(spix, 'results/kid-football',"%05d.csv")
+bist.utils.save_video(marked, 'results/kid-football',"border_%05d.png")
+bist.utils.save_video(pooled, 'results/kkid-football',"pooled_%05d.png")
 ```
 
-_Note_: BIST uses *forward* optical flows, so flows[T-1] == 0.
+_Note_: BIST uses *forward* optical flows.
 
 ## Superpixel Convolution
 

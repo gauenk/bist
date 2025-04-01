@@ -20,7 +20,6 @@
 
 #include "split_merge_prop.h"
 #include "seg_utils.h"
-// #include "demo_utils.h"
 
 #include <stdio.h>
 #ifndef WIN32

@@ -29,7 +29,7 @@ __host__ void init_sp_params(spix_params* sp_params,
                              int nbatch, int width, int nftrs, int sp_size){
 
   int count = npix/(1.*nspix);
-  printf("count, sp_size: %d,%d\n",count,sp_size);
+  //printf("count, sp_size: %d,%d\n",count,sp_size);
 
   // -- fill sp_params with summary statistics --
   update_params_summ(img, spix, sp_params, sp_helper,

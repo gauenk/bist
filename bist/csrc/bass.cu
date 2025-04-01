@@ -69,7 +69,7 @@ __host__ int bass(float* img, int* seg,spix_params* sp_params,bool* border,
       niters = 5000;
     }
 
-    printf("niters: %d\n",niters);
+    //printf("niters: %d\n",niters);
     for (int idx = 0; idx < niters; idx++) {
 
 
@@ -176,7 +176,7 @@ __host__ int bass(float* img, int* seg,spix_params* sp_params,bool* border,
     if (nspix_controlled){
       thrust::device_vector<int> prop_ids = extract_unique_ids(seg, npix, 0);
       int nliving = prop_ids.size(); // only when controlling # spix
-      printf("nliving: %d\n",nliving);
+      //printf("nliving: %d\n",nliving);
     }
 
     return max_spix;

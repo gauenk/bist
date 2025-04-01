@@ -242,10 +242,6 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
    }
 }
 
-
-
-
-
 class Logger {
 
 public:
@@ -299,6 +295,12 @@ public:
   std::string get_filename(const std::string& directory, int seq_index);
 
 };
+
+
+
+
+
+  
 
 #endif
 

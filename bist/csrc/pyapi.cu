@@ -25,32 +25,30 @@
 // #include <opencv2/opencv.hpp>
 
 // -- local --
-// #include "file_io.h"
 #include "structs.h"
 #include "init_utils.h"
 #include "rgb2lab.h"
 #include "bass.h"
-#include "prop.h"
+#include "bist.h"
 #include "shift_and_fill.h"
 #include "seg_utils.h" // dev only
-// #include "update_seg.h" // dev only
 #include "split_disconnected.h"
 #include "shift_labels.h"
-
-// -- demo --
-// #include "demo_utils.h"
 
 // using namespace cv;
 using namespace std;
 
 
 torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
-                        int niters, int sp_size, float sigma2_app,
-                        float potts, float alpha, float split_alpha,
-                        int target_nspix, bool video_mode, bool rgb2lab_b){
+                        int niters, int sp_size, float sigma_app,
+                        float potts, float alpha, float iperc_coeff,
+                        float thresh_new, float thresh_relabel,
+                        float split_alpha, int target_nspix,
+                        bool video_mode, bool rgb2lab_b){
 
   // -- viz inputs --
-  // printf("niters: %d, sp_size: %d, sigma2_app: %.3f, potts: %.3f, alpha: %.3f, split_alpha: %.3f, target_nspix: %d, video_mode: %s\n",niters, sp_size, sigma2_app, potts, alpha, split_alpha, target_nspix, video_mode ? "true" : "false");  
+  printf("niters: %d, sp_size: %d, sigma_app: %.3f, potts: %.3f, alpha: %.3f, iperc_coeff: %.3f, thresh_new: %.3f, thresh_relabel: %.3f, split_alpha: %.3f, target_nspix: %d, video_mode: %s\n",
+    niters, sp_size, sigma_app, potts, alpha, iperc_coeff, thresh_new, thresh_relabel, split_alpha, target_nspix, video_mode ? "true" : "false");  
 
   // -- unpack shape --
   int nframes = vid.size(0);
@@ -63,6 +61,7 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
   // -- legacy --
   int sm_start = 0;
   float sigma2_size = 0.0;
+  float sigma2_app = sigma_app * sigma_app;
 
   // -- actually, not an input --
   int niters_seg = 4;
@@ -70,9 +69,9 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
   float merge_alpha = 0.0;
 
   // -- not controlled in python --
-  float thresh_relabel = 1e-5;
-  float thresh_new = 5e-2;
-  float iperc_coeff = 4.0;
+  //float thresh_relabel = 1e-5;
+  //float thresh_new = 5e-2;
+  //float iperc_coeff = 4.0;
 
   // -- alloc options --
   auto options_f32 = torch::TensorOptions().dtype(torch::kFloat32)
@@ -84,7 +83,7 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
   torch::Tensor spix_th = torch::zeros({nframes, height, width}, options_i32);
 
   // -- init --
-  // float* img_lab = (float*)easy_allocate(npix*3,sizeof(float));
+  float* img_lab = (float*)easy_allocate(npix*3,sizeof(float));
   float* img_rgb;
   float* flow = nullptr;
   int* spix_prev = nullptr;
@@ -105,11 +104,11 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
 
     // -- prepare images --
     img_rgb = vid[fidx].data_ptr<float>();
-    // if (rgb2lab_b) {
-    //   rgb2lab(img_rgb,img_lab,nbatch,npix); // convert image to LAB
-    // }else {
-    //   cudaMemcpy(img_lab,img_rgb,npix*3,cudaMemcpyDeviceToDevice);
-    // }
+    if (rgb2lab_b) {
+      rgb2lab(img_rgb,img_lab,nbatch,npix); // convert image to LAB
+    }else {
+      cudaMemcpy(img_lab,img_rgb,npix*3,cudaMemcpyDeviceToDevice);
+    }
 
     // -- unpack flow --
     if ((video_mode) and (fidx>0)){
@@ -124,7 +123,7 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
 
     if ((fidx == 0)||(video_mode == false)){
       // -- single image --
-      auto out = run_bass(img_rgb, nbatch, height, width, nftrs,
+      auto out = run_bass(img_lab, nbatch, height, width, nftrs,
                           niters, niters_seg, sm_start,
                           sp_size,sigma2_app,sigma2_size,
                           potts,alpha,split_alpha,target_nspix);
@@ -160,12 +159,12 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
       }
 
       // -- propogate --
-      auto out = run_prop(img_rgb, nbatch, height, width, nftrs,
+      auto out = run_bist(img_lab, nbatch, height, width, nftrs,
                           niters, niters_seg, sm_start,
                           sp_size,sigma2_app,sigma2_size,
                           potts,alpha,filled_spix,shifted_spix,params_prev,
                           thresh_relabel, thresh_new,
-                          merge_alpha, split_alpha, iperc_coeff, target_nspix,true);
+                          merge_alpha, split_alpha, iperc_coeff, target_nspix, true);
       spix = std::get<0>(out);
       border = std::get<1>(out);
       params = std::get<2>(out);
@@ -198,7 +197,7 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
     }
 
   }
-  // cudaFree(img_lab);
+  cudaFree(img_lab);
 
 
 
@@ -210,7 +209,8 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
 torch::Tensor
 bist_forward_cuda(const torch::Tensor vid, const torch::Tensor flows,
                   int niters, int sp_size, float potts,
-                  float sigma2_app, float alpha, float split_alpha,
+                  float sigma_app, float alpha, float iperc_coeff,
+                  float thresh_new, float thresh_relabel, float split_alpha, 
                   int target_nspix, bool video_mode, bool rgb2lab_b){
 
   // -- check --
@@ -218,8 +218,9 @@ bist_forward_cuda(const torch::Tensor vid, const torch::Tensor flows,
   CHECK_INPUT(flows);
 
   auto out = main_loop(vid, flows, niters,  sp_size,
-                       sigma2_app, potts, alpha, split_alpha,
-                       target_nspix, video_mode, rgb2lab_b);
+                       sigma_app, potts, alpha,  iperc_coeff,
+                       thresh_new, thresh_relabel,
+                       split_alpha, target_nspix, video_mode, rgb2lab_b);
 
   return out;
 }
@@ -356,7 +357,7 @@ torch::Tensor run_shift_labels_py(torch::Tensor pix_labels, torch::Tensor spix,
 
 
 void init_bist(py::module &m){
-  m.def("bist_forward", &bist_forward_cuda,"BIST");
+  m.def("run_bist", &bist_forward_cuda,"BIST");
   m.def("get_marked_video", &get_marked_video,"get marked video");
   m.def("shift_labels", &run_shift_labels_py,"run shifted labels");
   // m.def("bass_forward", &bass_forward_cuda,
