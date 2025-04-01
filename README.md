@@ -23,7 +23,7 @@ BIST is written in C++/CUDA. The source code can be compiled into an executable 
     make -j8
     ```
 
-3. Install the Python API:
+3. (and/or) Install the Python API:
     ```bash
     pip install -r requirements.txt
     python -m pip install -e .
