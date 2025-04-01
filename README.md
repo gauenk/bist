@@ -82,7 +82,7 @@ bist.utils.save_video(marked, 'results/kid-football',"border_%05d.png")
 bist.utils.save_video(pooled, 'results/kkid-football',"pooled_%05d.png")
 ```
 
-_Note_: BIST uses *forward* optical flows.
+_Note_: BIST uses *forward* optical flows. [The flow files for some sequences can be downloaded here](https://drive.google.com/drive/folders/1598mrD5gSSM-cYLeNOnLTeXDwE2zYCVU?usp=sharing), but they are too big to host them all.
 
 ## Superpixel Convolution
 
