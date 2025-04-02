@@ -136,15 +136,20 @@ def crop_image(img,crop):
     hs,he,ws,we = crop
     return img[...,hs:he,ws:we]
 
+def read_video_by_name(dname,vname):
+    iroot = get_image_root(dname)/vname
+    return read_video(root)
+
 def read_video(root):
     image_files = sorted([f for f in os.listdir(str(root)) if f.endswith(('.png', '.jpg'))])
     vid = []
     for image_file in image_files:
         # Read each image using thvision
         image_path = os.path.join(root, image_file)
-        image = tvio.read_image(image_path).permute(1,2,0)  # shape: (H, W, C)
+        image = tvio.read_image(image_path).permute(1,2,0)
+        image = image[...,:3]
         vid.append(image.float())
-    vid = th.stack(vid)
+    vid = th.stack(vid) # T H W C
     return vid
 
 def read_anno(root):
@@ -169,6 +174,8 @@ def read_anno(root):
     return anno
 
 def read_spix(root,frames=None):
+    if isinstance(root,str): root = Path(root)
+
     pattern = re.compile(r"^\d{5}\.csv$")
     if frames is None:
         frames = [f.name for f in root.iterdir()]
@@ -283,7 +290,11 @@ def read_flo(filename, precision="32"):
 def read_cache(root,dname,vname,group,exp_id):
     fname = root / ("%s_%s_%s_%s.csv" % (dname,vname,group,exp_id))
     if not fname.exists(): return None
-    else: return pd.read_csv(fname,index_col=0)
+    else:
+        try:
+            return pd.read_csv(fname,index_col=0)
+        except:
+            return None
 
 def save_cache(results,root,dname,vname,group,exp_id):
     fname = root / ("%s_%s_%s_%s.csv" % (dname,vname,group,exp_id))
@@ -328,3 +339,37 @@ def get_exps(togrid,defaults):
         exp['id'] = "id_"+str(ix)
         exps.append(exp)
     return exps
+
+
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+#
+#
+#          Some Common Opts
+#
+#
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+def index_tensor(tensor,index):
+
+    # -- reshape --
+    B,H,W,C = tensor.shape
+    tensor = rearrange(tensor,'b h w c -> h w (b c)')
+    shifted = th.zeros_like(tensor).to(tensor.device)
+
+    # Mask out the valid indices
+    valid_mask = index != -1
+    valid_indices = index[valid_mask]  # Extract valid indices
+
+    # Compute the row/col positions of valid indices in the original image
+    rows, cols = th.meshgrid(th.arange(H), th.arange(W), indexing='ij')
+    rows = rows.to(tensor.device)
+    cols = cols.to(tensor.device)
+    valid_rows = rows[valid_mask]
+    valid_cols = cols[valid_mask]
+
+    # Map the valid indices to their new positions
+    shifted[valid_rows, valid_cols] = tensor.reshape(-1, B*C)[valid_indices]
+
+    shifted = rearrange(shifted,'h w (b c) -> b h w c',b=B)
+    return shifted
+

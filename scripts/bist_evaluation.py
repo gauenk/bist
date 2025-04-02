@@ -11,54 +11,6 @@ import shutil # centered table titles
 from tabulate import tabulate # pretty tables
 from pathlib import Path
 
-def read_exps(save_root):
-    exps = []
-    for fname in save_root.iterdir():
-        if not str(fname).endswith(".csv"): continue
-        exp = pd.read_csv(fname).to_dict(orient='records')[0]
-        exps.append(exp)
-    return exps
-
-def evaluate_exp(dname,exp,spix_root,eval_root,refresh=False):
-
-    # -- compute results --
-    results = []
-    vnames = bist.utils.get_video_names(dname)
-    image_root = bist.utils.get_image_root(dname)
-    anno_root = bist.utils.get_anno_root(dname)
-    cache_root = eval_root / "cache"
-
-    for vname in vnames[:2]:
-
-        # -- read cache --
-        res = bist.utils.read_cache(cache_root,dname,vname,exp['group'],exp['id'])
-        if not(res is None) and not(refresh):
-            results.append(res)
-            continue
-
-        # -- read video, gt-segmentation, & spix --
-        vid = bist.utils.read_video(image_root/vname)/255.
-        anno = bist.utils.read_anno(anno_root/vname)
-        spix = bist.utils.read_spix(spix_root/vname)
-
-        # -- subset --
-        T = spix.shape[0]
-        vid = vid[:T].contiguous()
-        anno = anno[:T].contiguous()
-
-        # -- evaluate --
-        res = bist.evaluate.run(vid,anno,spix)
-        res['vname'] = vname
-        for k,v in exp.items(): res[k] = v
-        results.append(pd.DataFrame([res]))
-
-        # -- save cache --
-        bist.utils.save_cache([res],cache_root,dname,vname,exp['group'],exp['id'])
-
-    results = pd.concat(results).reset_index(drop=True)
-    return results
-
-
 def format_df(df, float_format="{:.4f}"):
     df_copy = df.copy()  # Avoid modifying the original DataFrame
     for col in df_copy.select_dtypes(include=['float', 'int']).columns:
@@ -78,7 +30,7 @@ def bist_bass_exps(results):
     # -- prepare results --
     results = results[results['group'].isin(["bist","bass"])]
     nrep = len(results['rep'].unique())
-    results = results.drop(columns=["vname","rep"],axis=1)
+    results = results.drop(columns=["vname","rep","flow"],axis=1)
     results_m = results.groupby(["group","id"]).mean().reset_index()
     results_s = results.groupby(["group","id"]).std().reset_index()
 
@@ -99,9 +51,11 @@ def split_step_exps(results):
     # -- prepare results --
     results = results[results['group'] == "split"]
     nrep = len(results['rep'].unique())
-    results = results.drop(columns=["vname","rep"],axis=1)
+    results = results.drop(columns=["vname","rep","flow"],axis=1)
     results_m = results.groupby(["group","id"]).mean().reset_index()
     results_s = results.groupby(["group","id"]).std().reset_index()
+    results_m = results_m.sort_values(["iperc_coeff","alpha"])
+    results_s = results_s.sort_values(["iperc_coeff","alpha"])
 
     # -- view results --
     terminal_width = shutil.get_terminal_size().columns
@@ -119,24 +73,26 @@ def relabeling_exps(results):
     # -- prepare results --
     results = results[results['group'] == "relabel"]
     nrep = len(results['rep'].unique())
-    results = results.drop(columns=["vname","rep"],axis=1)
+    results = results.drop(columns=["vname","rep","flow"],axis=1)
     results_m = results.groupby(["group","id"]).mean().reset_index()
     results_s = results.groupby(["group","id"]).std().reset_index()
 
     # -- view results --
     terminal_width = shutil.get_terminal_size().columns
+    print("\n"*2)
     print("Relabeling.".center(terminal_width))
-    for (group,gdf) in results.groupby("thresh_relabel"):
+    for (group,gdf) in results_m.groupby("thresh_relabel"):
+        gdf = gdf.sort_values("thresh_new")
         print("Threshold to Relabel a Current Spix as a Previous One: ",group)
-        view_table(results_m[['id','thresh_new','ave_nsp','tex','szv']])
-        view_table(results_m[['id','ue2d','ue3d','sa2d','sa3d','pooling']])
+        view_table(gdf[['id','thresh_new','ave_nsp','tex','szv']])
+        view_table(gdf[['id','ue2d','ue3d','sa2d','sa3d','pooling']])
 
 def boundary_shape_exps(results):
 
     # -- prepare results --
     results = results[results['group'] == "bshape"]
     nrep = len(results['rep'].unique())
-    results = results.drop(columns=["vname","rep"],axis=1)
+    results = results.drop(columns=["vname","rep","flow"],axis=1)
     results_m = results.groupby(["group","id"]).mean().reset_index()
     results_s = results.groupby(["group","id"]).std().reset_index()
 
@@ -153,7 +109,7 @@ def conditioned_boundary_updates_exps(results):
     # -- prepare results --
     results = results[results['group'] == "cboundary"]
     nrep = len(results['rep'].unique())
-    results = results.drop(columns=["vname","rep"],axis=1)
+    results = results.drop(columns=["vname","rep","flow"],axis=1)
     results_m = results.groupby(["group","id"]).mean().reset_index()
     results_s = results.groupby(["group","id"]).std().reset_index()
     if not("prop_nc" in results.columns): return
@@ -190,6 +146,58 @@ def optical_flow_exps(results):
     view_table(results_s[['id','flow','ave_nsp','tex','szv']])
     view_table(results_s[['id','ue2d','ue3d','sa2d','sa3d','pooling']])
 
+def read_exps(save_root):
+    exps = []
+    for fname in save_root.iterdir():
+        if not str(fname).endswith(".csv"): continue
+        exp = pd.read_csv(fname).to_dict(orient='records')[0]
+        exps.append(exp)
+    return exps
+
+#
+# -- Primary Evaluation Function --
+#
+
+def evaluate_exp(dname,exp,spix_root,eval_root,refresh=False):
+
+    # -- compute results --
+    results = []
+    vnames = bist.utils.get_video_names(dname)
+    image_root = bist.utils.get_image_root(dname)
+    anno_root = bist.utils.get_anno_root(dname)
+    cache_root = eval_root / "cache"
+
+    for vname in vnames:
+
+        # -- read cache --
+        res = bist.utils.read_cache(cache_root,dname,vname,exp['group'],exp['id'])
+        if not(res is None) and not(refresh):
+            results.append(res)
+            continue
+
+        # -- read video, gt-segmentation, & spix --
+        vid = bist.utils.read_video(image_root/vname)/255.
+        anno = bist.utils.read_anno(anno_root/vname)
+        spix = bist.utils.read_spix(spix_root/vname)
+
+        # -- subset --
+        T = spix.shape[0]
+        vid = vid[:T].contiguous()
+        anno = anno[:T].contiguous()
+
+        # -- evaluate --
+        res = bist.evaluate.run(vid,anno,spix)
+        res['vname'] = vname
+        for k,v in exp.items(): res[k] = v
+        results.append(pd.DataFrame([res]))
+
+        # -- save cache --
+        bist.utils.save_cache([res],cache_root,dname,vname,exp['group'],exp['id'])
+
+    results = pd.concat(results).reset_index(drop=True)
+    return results
+
+
 
 def main():
 
@@ -207,11 +215,12 @@ def main():
 
     # -- evaluate over a grid --
     eval_root = save_root / "eval"
-    nreps = 3
+    nreps = 10
     results = []
     for exp in exps:
         for rep in range(nreps):
             spix_root = save_root / exp['group'] / exp['id'] / ("rep%d"%rep)
+            if not spix_root.exists(): continue
             res = evaluate_exp(dname,exp,spix_root,eval_root,refresh)
             res['rep'] = rep
             results.append(res)
@@ -223,7 +232,7 @@ def main():
     relabeling_exps(results)
     boundary_shape_exps(results)
     conditioned_boundary_updates_exps(results)
-    optical_flow_exps(results)
+    # optical_flow_exps(results) # run for segtrackv2
 
 
 if __name__ == "__main__":

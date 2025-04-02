@@ -59,6 +59,7 @@ int main(int argc, char **argv) {
     int target_nspix = 0;
     int logging = 0;
     int nimgs = 0;
+    int save_only_spix = 0;
 
     /******************************
 
@@ -95,6 +96,7 @@ int main(int argc, char **argv) {
             !parse_argument(i, argc, argv, arg, "--prop_icov", prop_icov) ||
             !parse_argument(i, argc, argv, arg, "--iperc_coeff", iperc_coeff) ||
             !parse_argument(i, argc, argv, arg, "--logging", logging) ||
+            !parse_argument(i, argc, argv, arg, "--save_only_spix", save_only_spix) ||
             !parse_argument(i, argc, argv, arg, "--nimgs", nimgs)) {
             return 1;
         }
@@ -369,12 +371,16 @@ int main(int argc, char **argv) {
             cv::Mat pooled_img = std::get<0>(out);
             float* pooled_img_ptr = std::get<1>(out);
             cv::String fname_res_pooled=string(odirec)+subdir+"pooled_"+img_number+".png";
-            imwrite(fname_res_pooled, pooled_img);
+            if (not save_only_spix){
+              imwrite(fname_res_pooled, pooled_img);
+            }
 
             // -- residual image --
-            cv::Mat res_img = get_img_res(img_rgb, pooled_img_ptr, height, width);
-            cv::String fname_res=string(odirec)+subdir+"res_"+img_number+".png";
-            imwrite(fname_res, res_img);
+            // cv::Mat res_img = get_img_res(img_rgb, pooled_img_ptr, height, width);
+            // cv::String fname_res=string(odirec)+subdir+"res_"+img_number+".png";
+            // if (not save_only_spix){
+            //   imwrite(fname_res, res_img);
+            // }
 
             // -- save border on pooled image --
             // cv::Mat pborder_img = get_img_border(pooled_img_ptr, _border,
@@ -386,14 +392,17 @@ int main(int argc, char **argv) {
             // -- save border --
             cv::Mat border_img = get_img_border(img_rgb, border, height, width, nftrs);
             cv::String fname_res_border=string(odirec)+subdir+"border_"+img_number+".png";
-            imwrite(fname_res_border, border_img);
+            if (not save_only_spix){
+              imwrite(fname_res_border, border_img);
+            }
             // free(border_cpu);
             cudaFree(border);
 
             // -- save parameters --
             cv::String params_idx_path =string(odirec)+subdir+img_number+"_params.csv";
-            save_params(params_idx_path,params);
-
+            // if (not save_only_spix){
+            //     save_params(params_idx_path,params);
+            // }
 
             // -- handle memory for previous info --
             if (count>0){

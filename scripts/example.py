@@ -23,7 +23,7 @@ marked = bist.get_marked_video(vid,spix,color)
 pooled,downsampled = bist.get_pooled_video(vid,spix)
 # downsampled.shape = (T,MAX_NSPIX,C)
 
-# Save or display the denoised image
+# Save the superpixel info
 bist.utils.save_spix(spix, 'results/%s'%vname,"%05d.csv")
 bist.utils.save_video(marked, 'results/%s'%vname,"border_%05d.png")
 bist.utils.save_video(pooled, 'results/%s'%vname,"pooled_%05d.png")

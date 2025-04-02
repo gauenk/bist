@@ -76,7 +76,7 @@ def run_exp(dname,exp,spix_root):
         raise ValueError("Uknown flow method [%s]"%exp['flow'])
 
     # -- run bist --
-    for vname in vnames[:2]:
+    for vname in vnames:
         vid_root = image_root/vname
         flow_root = vid_root/flow_subdir
         spix_root_v = spix_root / vname
@@ -86,12 +86,11 @@ def run_exp(dname,exp,spix_root):
 def main():
 
     # -- global config --
-    # dname = "davis"
-    dname = "segtrackv2"
+    dname = "davis"
     default = {"sp_size":25,"potts":10.0,"sigma_app":0.009,
                "alpha":math.log(0.5),"iperc_coeff":4.0,
                "thresh_new":5e-2,"thresh_relabel":1e-6,
-               "video_mode":True,"flow":"default","group":"bist","nimgs":10}
+               "video_mode":True,"flow":"default","group":"bist","nimgs":0}
 
     # -- save root --
     save_root = Path("results/")/dname
@@ -104,11 +103,31 @@ def main():
     exps += split_step_exps(default)
     exps += relabeling_exps(default)
     exps += boundary_shape_exps(default)
-    exps += conditioned_boundary_updates_exps(default)
-    # exps = optical_flow_exps(default) # only on segtrack
 
     # -- run each experiment a few times --
-    nreps = 3
+    nreps = 1
+    for exp in exps:
+        for rep in range(nreps):
+            spix_root = save_root / exp['group'] / exp['id'] / ("rep%d"%rep)
+            save_exp_info(exp,save_root / "info")
+            run_exp(dname,exp,spix_root)
+
+    # -- run [conditional boundary] several times --
+    exps = conditioned_boundary_updates_exps(default)
+    nreps = 10
+    for exp in exps:
+        for rep in range(nreps):
+            spix_root = save_root / exp['group'] / exp['id'] / ("rep%d"%rep)
+            save_exp_info(exp,save_root / "info")
+            run_exp(dname,exp,spix_root)
+
+    # -- run [optical flow] on segtrackv2 --
+    dname = "segtrackv22"
+    save_root = Path("results/")/dname
+    if not save_root.exists():
+        save_root.mkdir(parents=True)
+    exps = optical_flow_exps(default) # only on segtrack
+    nreps = 1
     for exp in exps:
         for rep in range(nreps):
             spix_root = save_root / exp['group'] / exp['id'] / ("rep%d"%rep)
