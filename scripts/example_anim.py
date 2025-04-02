@@ -17,5 +17,7 @@ bist.run_bin(vid_root,flow_root,spix_root,img_ext,**kwargs)
 # Create the "BIST in Action" animation
 vid  = bist.utils.read_video(vid_root).cuda()/255.
 spix = bist.utils.read_spix(spix_root).cuda()
-bist.animate.run(vid,spix,'results/%s/log'%vname,'results/%s/anim'%vname,[0,1,2])
+log_root = 'results/%s/log'%vname
+anim_root = 'results/%s/anim'%vname
+bist.animate.run(vid,spix,log_root,anim_root,[0,1,2])
 
