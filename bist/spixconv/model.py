@@ -72,25 +72,22 @@ class SuperpixelConv(nn.Module):
 
             # -- get reweight term for kernel --
             rweight = self.get_reweight(x,sims)
-            apply_norm(rweight,self.sconv_norm_type,self.sconv_norm_scale)
-            # rweight[...] = 1.
+            rweight = apply_norm(rweight,self.sconv_norm_type,self.sconv_norm_scale)
+            rweight[...] = 1.
 
             # -- apply the reweighting term --
             in_dim,out_dim = self.in_dim,self.out_dim
-            # print("kernel.shape: ",kernel.shape,in_dim,out_dim)
             ksize2 = kernel_size*kernel_size
             kernel = kernel.reshape(batchsize,out_dim,in_dim,ksize2)
-            # print("kernel.shape: ",kernel.shape,in_dim,out_dim)
             kernel = rearrange(kernel,'b od id k -> b od id 1 1 k')
             kernel = kernel * rweight
             kernel = rearrange(kernel,'b od id h w k -> b od (h w) (id k)')
 
             # -- optionally renormalize --
-            apply_norm(kernel,self.kernel_norm_type,self.kernel_norm_scale)
+            kernel = apply_norm(kernel,self.kernel_norm_type,self.kernel_norm_scale)
 
             # -- apply kernel --
             out = th.sum(patches.unsqueeze(1) * kernel,-1).transpose(1,2) + bias
-
 
         else:
 
@@ -168,6 +165,12 @@ class SuperpixelWrapper(nn.Module):
         self.spix_params['read_video'] = self.spix_method == "bist"
 
     def forward(self, x, flow):
+
+        # -- all pixels are an spix :D --
+        if self.spix_method == "exh":
+            T,_,H,W = x.shape
+            spix = th.arange(H*W).view(1,H,W).repeat(T,1,1).to(x.device)
+            return spix
 
         # -- unpack --
         B,F,H,W = x.shape

@@ -16,7 +16,7 @@ import pandas as pd
 from pathlib import Path
 
 def sigma_grid_exps(default):
-    config = {"conv_type":["rw_conv"],
+    config = {"conv_type":["sconv"],
               "sigma":[10,20,30],
               "sconv_reweight_source":["sims"],
               "spix_method":["bist","bass","exh"],
@@ -112,15 +112,14 @@ def run_exp(exp,save_root):
     seed = 123
     nbatches_per_epoch = 1000
     log_every = 100
+    bist.utils.seed_everything(seed)
 
     # -- load network --
     model = bist.spixconv.model.SpixConvDenoiser(**exp).cuda()
     print(model)
-
     optimizer = th.optim.Adam(model.parameters(), lr=lr)
     data,loader = bist.spixconv.davis.get_davis_dataset(tr_nframes,num_workers)
     flow_fxn = bist.spixconv.spynet.get_flow_fxn()
-    print(loader.tr)
     def add_noise(video):
         return video + (sigma/255.)*th.randn_like(video)
 
@@ -189,15 +188,18 @@ def main():
     # -- global config --
     default = {
         "sigma":20,"dim":6,
-        "conv_type":"sconv","spix_method":"bass",
+        "conv_type":"sconv","spix_method":"exh",
         "sims_norm_scale":10.0,
         "use_spixftrs_net":False,"spixftrs_dim":3,
         "sconv_norm_type":"exp_max","sconv_norm_scale":1.0,
         "kernel_norm_type":"none","kernel_norm_scale":0.0,
         "conv_kernel_size":3,"sconv_kernel_size":7,"net_depth":3,
-        "sp_size":15,"potts":10.0,"sigma_app":0.09,
-        "alpha":math.log(0.5),"iperc_coeff":4.0,
-        "thresh_new":5e-2,"thresh_relabel":1e-6}
+        # -- kwargs --
+        "sp_size":15,"sigma2_app":0.9,"potts":1.,
+        "alpha":2.0,"split_alpha":2.0,"sm_start":0,"rgb2lab":False}
+        # "sp_size":15,"potts":10.0,"sigma_app":0.09,
+        # "alpha":math.log(0.5),"iperc_coeff":4.0,
+        # "thresh_new":5e-2,"thresh_relabel":1e-6}
 
     # -- save root --
     save_root = Path("results/spixconv/")
