@@ -28,12 +28,12 @@ import stnls
 
 class SuperpixelConv(nn.Module):
 
-    defs = {"kernel_size":5,
-            "conv_type":"sconv",
+    defs = {"conv_type":"sconv",
+            "sconv_kernel_size":7,
             "sconv_reweight_source":"sims",
             # -- normalization --
-            "sconv_norm_type":"none",
-            "sconv_norm_scale":0.0,
+            "sconv_norm_type":"exp_max",
+            "sconv_norm_scale":1.0,
             "kernel_norm_type":"none",
             "kernel_norm_scale":0.0}
 
@@ -44,7 +44,7 @@ class SuperpixelConv(nn.Module):
         extract_self(self,kwargs,self.defs)
         in_chnls = dim
         out_chnls = dim
-        kernel_size = self.kernel_size
+        kernel_size = self.sconv_kernel_size
         self.in_dim = dim
         self.out_dim = dim
         self.stride = 1
@@ -65,6 +65,7 @@ class SuperpixelConv(nn.Module):
         out_dim,total_ksize = kernel.shape
         kernel = kernel.unsqueeze(0).expand(batchsize,out_dim,total_ksize)
         bias = self.linear.bias
+        kernel_size = self.sconv_kernel_size
 
         # -- reweight with sims --
         if self.conv_type == "sconv":
@@ -77,7 +78,7 @@ class SuperpixelConv(nn.Module):
             # -- apply the reweighting term --
             in_dim,out_dim = self.in_dim,self.out_dim
             # print("kernel.shape: ",kernel.shape,in_dim,out_dim)
-            ksize2 = self.kernel_size*self.kernel_size
+            ksize2 = kernel_size*kernel_size
             kernel = kernel.reshape(batchsize,out_dim,in_dim,ksize2)
             # print("kernel.shape: ",kernel.shape,in_dim,out_dim)
             kernel = rearrange(kernel,'b od id k -> b od id 1 1 k')
@@ -98,8 +99,8 @@ class SuperpixelConv(nn.Module):
 
         # Reshape back to (batch_size, out_channels, H_out, W_out)
         batch_size, num_patches, _ = out.shape
-        H_out = int((x.size(2) + 2 * self.padding - self.kernel_size) / self.stride + 1)
-        W_out = int((x.size(3) + 2 * self.padding - self.kernel_size) / self.stride + 1)
+        H_out = int((x.size(2) + 2 * self.padding - kernel_size) / self.stride + 1)
+        W_out = int((x.size(3) + 2 * self.padding - kernel_size) / self.stride + 1)
 
         out = out.transpose(1, 2).reshape(batch_size, -1, H_out, W_out)
         return out
@@ -116,7 +117,7 @@ class SuperpixelConv(nn.Module):
 
     def _get_reweight(self,tensor,dist_type):
         # -- compute \sum_s p(s_i=s)p(s_j=s) --
-        ws = self.kernel_size
+        ws = self.sconv_kernel_size
         tensor = tensor[None,:].contiguous()
         if dist_type == "l2":
             search = stnls.search.NonLocalSearch(ws,0,dist_type=dist_type,itype="int")
@@ -136,10 +137,8 @@ def apply_norm(tensor,norm_type,norm_scale):
     elif norm_type == "max":
         tensor = tensor/(1e-5+tensor.max(-1,keepdim=True).values)
     elif norm_type == "sm":
-        norm_scale = self.sconv_norm_scale
         tensor = th.softmax(-norm_scale*tensor,-1)
     elif norm_type == "exp_max":
-        norm_scale = self.sconv_norm_scale
         tensor = th.exp(-norm_scale*tensor)
         tensor = tensor/(1e-5+tensor.max(-1,keepdim=True).values)
     elif norm_type == "none":
@@ -359,7 +358,9 @@ class SpixConvDenoiser(nn.Module):
 
     defs = dict(SuperpixelWrapper.defs)
     defs.update(SuperpixelConv.defs)
-    _defs = {"dim":6,"net_depth":3,"kernel_size":7,
+    _defs = {"dim":6,"net_depth":3,
+             "conv_kernel_size":3,
+             "sims_norm_scale":10.0,
              "use_spixftrs_net":True,"spixftrs_dim":6}
     defs.update(_defs)
 
@@ -372,7 +373,7 @@ class SpixConvDenoiser(nn.Module):
         # -- conv layers --
         dim = self.dim
         D = self.net_depth
-        conv_ksize = kwargs['kernel_size']
+        conv_ksize = self.conv_kernel_size
         conv_ksize = self.unpack_conv_ksize(conv_ksize,self.net_depth)
         init_conv = lambda d0,d1,ksize: nn.Conv2d(d0,d1,ksize,padding="same")
         self.conv0 = init_conv(3,dim,conv_ksize[0])
@@ -419,7 +420,7 @@ class SpixConvDenoiser(nn.Module):
         H,W = x.shape[-2:]
 
         #-- compute sims --
-        sims = get_sims(spix_ftrs,spix)
+        sims = get_sims(spix_ftrs,spix,self.sims_norm_scale)
 
         # -- conv layers --
         ftrs = self.conv0(x)

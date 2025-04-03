@@ -57,7 +57,9 @@ def kernel_norm_exps(default):
     return exps
 
 def architecture_exps(default):
-    config = {"kernel_size":[5,7,9],"network_depth":[2,3,6],
+    config = {"conv_kernel_size":[3,7],
+              "sconv_kernel_size":[3,7,9],
+              "network_depth":[3,5],
               "group":["architecture"]}
     exps = bist.utils.get_exps(config,default)
 
@@ -76,7 +78,7 @@ def architecture_exps(default):
     return exps
 
 def spix_params_exps(default):
-    config = {"sims_norm_scale":[1.0,5.0,10.],
+    config = {"sims_norm_scale":[5.0,10.,20.],
               "sigma_app":[0.045,0.09,0.018],
               "potts":[1.0,10.,20.],"group":["spix_params"]}
     exps = bist.utils.get_exps(config,default)
@@ -187,11 +189,12 @@ def main():
     # -- global config --
     default = {
         "sigma":20,"dim":6,
-        "conv_type":"sconv","spix_method":"bist",
+        "conv_type":"sconv","spix_method":"bass",
+        "sims_norm_scale":10.0,
         "use_spixftrs_net":False,"spixftrs_dim":3,
-        "sconv_norm_type":"exp_max","sconv_norm_scale":10.0,
+        "sconv_norm_type":"exp_max","sconv_norm_scale":1.0,
         "kernel_norm_type":"none","kernel_norm_scale":0.0,
-        "kernel_size":7,"net_depth":3,
+        "conv_kernel_size":3,"sconv_kernel_size":7,"net_depth":3,
         "sp_size":15,"potts":10.0,"sigma_app":0.09,
         "alpha":math.log(0.5),"iperc_coeff":4.0,
         "thresh_new":5e-2,"thresh_relabel":1e-6}
