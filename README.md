@@ -8,7 +8,7 @@ Bayesian-Inspired Space-Time Superpixels (BIST) is a fast, temporally-coherent s
 
 ## Installation
 
-BIST is written in C++/CUDA. The source code can be compiled into an executable binary file or a Python API (or both).
+BIST is written in C++/CUDA. The source code can be compiled into an executable binary file and/or a Python API.
 
 1. Clone the repository:
     ```bash

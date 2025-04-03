@@ -47,8 +47,8 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
                         bool video_mode, bool rgb2lab_b){
 
   // -- viz inputs --
-  printf("niters: %d, sp_size: %d, sigma_app: %.3f, potts: %.3f, alpha: %.3f, iperc_coeff: %.3f, thresh_new: %.3f, thresh_relabel: %.3f, split_alpha: %.3f, target_nspix: %d, video_mode: %s\n",
-    niters, sp_size, sigma_app, potts, alpha, iperc_coeff, thresh_new, thresh_relabel, split_alpha, target_nspix, video_mode ? "true" : "false");  
+  // printf("niters: %d, sp_size: %d, sigma_app: %.3f, potts: %.3f, alpha: %.3f, iperc_coeff: %.3f, thresh_new: %.3f, thresh_relabel: %.3f, split_alpha: %.3f, target_nspix: %d, video_mode: %s\n",
+  //   niters, sp_size, sigma_app, potts, alpha, iperc_coeff, thresh_new, thresh_relabel, split_alpha, target_nspix, video_mode ? "true" : "false");  
 
   // -- unpack shape --
   int nframes = vid.size(0);

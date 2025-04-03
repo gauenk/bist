@@ -34,7 +34,8 @@ def relabeling_exps(default):
     return exps
 
 def boundary_shape_exps(default):
-    config = {"sigma_app":[0.0045,0.009,0.018],"potts":[1.0,10.,20.],"group":["bshape"]}
+    config = {"sigma_app":[0.0045,0.009,0.018],
+              "potts":[1.0,10.,20.],"group":["bshape"]}
     exps = bist.utils.get_exps(config,default)
     return exps
 

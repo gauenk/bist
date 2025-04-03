@@ -14,12 +14,11 @@ import bin.bist_cuda
 from .utils import extract
 from ._paths import BIST_HOME
 
+
 def run(vid,flows,**kwargs):
 
     # -- unpack --
-    defaults = {"sp_size":25,"potts":10.0,"sigma_app":0.009,"alpha":math.log(0.5),
-                "iperc_coeff":4.0,"thresh_new":5e-2,"thresh_relabel":1e-6,
-                "split_alpha":0.0,"target_nspix":0,"video_mode":True,"rgb2lab":True}
+    defaults = default_params()
     kwargs = extract(kwargs,defaults)
     sp_size = kwargs['sp_size']
     niters = sp_size
@@ -47,13 +46,7 @@ def run(vid,flows,**kwargs):
 def run_bin(vid_root,flow_root,spix_root,img_ext,**kwargs):
 
     # -- unpack --
-    defaults = {"sp_size":25,"potts":10.0,"sigma_app":0.009,
-                "alpha":math.log(0.5),"iperc_coeff":4.0,
-                "thresh_new":5e-2,"thresh_relabel":1e-6,
-                "prop_nc":1,"prop_icov":1,"split_alpha":0.0,
-                "logging":0,"target_nspix":0,"nimgs":0,
-                "video_mode":True,"rgb2lab":True,
-                "save_only_spix":True,"verbose":False}
+    defaults = default_params()
     kwargs = extract(kwargs,defaults)
     sp_size = kwargs['sp_size']
     niters = sp_size
@@ -87,6 +80,16 @@ def run_bin(vid_root,flow_root,spix_root,img_ext,**kwargs):
         print(cmd)
     output = subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout
     return output
+
+def default_params():
+    defaults = {"sp_size":25,"potts":10.0,"sigma_app":0.009,
+                "alpha":math.log(0.5),"iperc_coeff":4.0,
+                "thresh_new":5e-2,"thresh_relabel":1e-6,
+                "prop_nc":1,"prop_icov":1,"split_alpha":0.0,
+                "logging":0,"target_nspix":0,"nimgs":0,
+                "video_mode":True,"rgb2lab":True,
+                "save_only_spix":True,"verbose":False}
+    return defaults
 
 def get_marked_video(vid,spix,color):
     islast = vid.shape[-1] == 3
@@ -124,16 +127,16 @@ def get_pooled_video(vid, mask, use3d=False):
     count = th.zeros((T, S, 1), device=vid.device, dtype=th.float32)  # Fix count shape
 
     # Scatter reduce to compute the sum per mask value
-    down.scatter_reduce_(1, mask_flat.unsqueeze(2).expand(-1, -1, C), vid_flat, reduce="sum")
-    count.scatter_reduce_(1, mask_flat.unsqueeze(2), th.ones_like(vid_flat), reduce="sum")
+    down.scatter_add_(1, mask_flat.unsqueeze(2).expand(-1, -1, C), vid_flat)
+    count.scatter_add_(1, mask_flat.unsqueeze(2), th.ones_like(vid_flat))
 
-    # Further reduce across T if needed
+    # Possibly average over time
     if use3d:
         down = down.sum(0,keepdim=True).repeat(T,1,1)
         count = count.sum(0,keepdim=True).repeat(T,1,1)
 
     # Avoid division by zero
-    count[count == 0] = 1
+    count = count + (count == 0).float()  # Prevent division by zero
     down /= count
 
     # Map back to full resolution (restore to (T, H, W, C) shape)
