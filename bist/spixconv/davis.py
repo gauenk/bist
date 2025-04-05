@@ -5,7 +5,7 @@
 """
 
 # -- imports --
-import os
+import os,random
 import numpy as np
 from pathlib import Path
 from einops import rearrange,repeat
@@ -21,24 +21,38 @@ from torch.utils.data import DataLoader
 import torchvision.transforms as T
 import torchvision.transforms.functional as xformF
 
-def get_davis_dataset(tr_nframes,num_workers):
+def get_davis_dataset(tr_nframes=-1):
 
     # -- dataset --
     data = edict()
-    data.tr = DAVIS(DAVIS_ROOT,"train",tr_nframes)
+    data.tr = DAVIS(DAVIS_ROOT,"train-val",tr_nframes)
     data.val = DAVIS(DAVIS_ROOT,"val",-1)
     data.te = DAVIS(DAVIS_ROOT,"test-dev",-1)
+
+    return data
+
+def get_loaders(data,num_workers,seed):
+
+    # -- random generator --
+    g = th.Generator()
+    g.manual_seed(seed)
+    def seed_worker(worker_id):
+        worker_seed = seed + worker_id
+        np.random.seed(worker_seed)
+        random.seed(worker_seed)
 
     # -- loaders --
     loader = edict()
     loader.tr = DataLoader(data.tr,shuffle=True,
-                           batch_size=1,num_workers=num_workers)
+                           batch_size=1,num_workers=num_workers,
+                           worker_init_fn=seed_worker,generator=g)
     loader.val = DataLoader(data.val,shuffle=False,
-                            batch_size=1,num_workers=num_workers)
+                            batch_size=1,num_workers=num_workers,
+                            worker_init_fn=seed_worker,generator=g)
     loader.te = DataLoader(data.te,shuffle=False,
-                           batch_size=1,num_workers=num_workers)
-
-    return data,loader
+                           batch_size=1,num_workers=num_workers,
+                           worker_init_fn=seed_worker,generator=g)
+    return loader
 
 class DAVIS():
 
@@ -73,7 +87,7 @@ class DAVIS():
         vid_files = self.paths[group]
         video = _read_video(vid_files)
         anno = _read_annos(vid_files,video.shape)
-        return video,anno
+        return video,anno,index
 
 
 def _get_vid_names(vid_fn):

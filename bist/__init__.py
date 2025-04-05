@@ -7,7 +7,8 @@ from . import metrics
 from . import animate
 
 # -- Superpixel Convolution Imports --
-try:
-    from . import spixconv
-except:
-    pass
+from . import spixconv
+# try:
+#     from . import spixconv
+# except:
+#     pass

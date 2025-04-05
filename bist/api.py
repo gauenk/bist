@@ -107,7 +107,15 @@ def shift_labels(labels,spix,flow,sizes=None):
     shifted = bin.bist_cuda.shift_labels(labels,spix,flow,sizes,nspix)
     return shifted
 
+# def get_pooled_video(vid, mask, use3d=False):
+#     from st_spix.sp_pooling import pooling
+#     vid = vid.contiguous()
+#     mask = mask.contiguous()
+#     pool,down = pooling(vid,mask,mask.max().item()+1)
+#     return pool,down
+
 def get_pooled_video(vid, mask, use3d=False):
+
     """
     Compute the average value of the vid for each unique mask value and return both:
     - "down": shape (T, S, C), where S is the max mask value + 1
@@ -143,7 +151,7 @@ def get_pooled_video(vid, mask, use3d=False):
     pool = down.gather(1, mask_flat.unsqueeze(2).expand(-1, -1, C)).view(T, H, W, C)
 
     # Final reshape for "down" to (T, S, C)
-    down = rearrange(down, 't s c -> t s c')
-    pool = rearrange(pool, 't h w c -> t h w c')
+    # down = rearrange(down, 't s c -> t s c')
+    # pool = rearrange(pool, 't h w c -> t h w c')
 
     return pool, down

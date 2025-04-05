@@ -123,7 +123,7 @@ def main():
             run_exp(dname,exp,spix_root)
 
     # -- run [optical flow] on segtrackv2 --
-    dname = "segtrackv22"
+    dname = "segtrackv2"
     save_root = Path("results/")/dname
     if not save_root.exists():
         save_root.mkdir(parents=True)

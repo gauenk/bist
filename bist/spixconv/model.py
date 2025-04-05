@@ -23,17 +23,21 @@ from bist.utils import extract,extract_self
 from torch.nn import Unfold
 
 # -- neighborhood search --
-import stnls
+try:
+    import stnls # see github.com/gauenk/stnls
+except:
+    pass
 
 
 class SuperpixelConv(nn.Module):
 
     defs = {"conv_type":"sconv",
+            "sims_norm_scale":10.0,
             "sconv_kernel_size":7,
             "sconv_reweight_source":"sims",
             # -- normalization --
-            "sconv_norm_type":"exp_max",
-            "sconv_norm_scale":1.0,
+            "sconv_norm_type":"max",
+            "sconv_norm_scale":0.0,
             "kernel_norm_type":"none",
             "kernel_norm_scale":0.0}
 
@@ -51,9 +55,9 @@ class SuperpixelConv(nn.Module):
         self.padding = (kernel_size-1)//2
         self.unfold = Unfold(kernel_size=kernel_size,
                              stride=self.stride,padding=self.padding)
-        self.linear = nn.Linear(in_chnls * kernel_size * kernel_size, out_chnls)
+        self.linear = nn.Linear(in_chnls*kernel_size *kernel_size, out_chnls)
 
-    def forward(self, x, sims):
+    def forward(self, x, spix):
 
         # Extract patches and flatten them
         patches = self.unfold(x)  # Shape: (batch_size, in_channels * kernel_size * kernel_size, L)
@@ -71,9 +75,12 @@ class SuperpixelConv(nn.Module):
         if self.conv_type == "sconv":
 
             # -- get reweight term for kernel --
+            sims,scs = None,self.sconv_reweight_source
+            if self.conv_type == "sconv" and scs == "sims":
+                sims = get_sims(x,spix,self.sims_norm_scale)
+            # sims = get_sims(x,spix,self.sims_norm_scale)
             rweight = self.get_reweight(x,sims)
             rweight = apply_norm(rweight,self.sconv_norm_type,self.sconv_norm_scale)
-            rweight[...] = 1.
 
             # -- apply the reweighting term --
             in_dim,out_dim = self.in_dim,self.out_dim
@@ -83,7 +90,7 @@ class SuperpixelConv(nn.Module):
             kernel = kernel * rweight
             kernel = rearrange(kernel,'b od id h w k -> b od (h w) (id k)')
 
-            # -- optionally renormalize --
+            # -- renormalize each kernel --
             kernel = apply_norm(kernel,self.kernel_norm_type,self.kernel_norm_scale)
 
             # -- apply kernel --
@@ -162,7 +169,7 @@ class SuperpixelWrapper(nn.Module):
         extract_self(self,kwargs,self.defs)
         self.proj = SpixFeatureProjection(3)
         self.spix_params = extract(kwargs,bist.default_params())
-        self.spix_params['read_video'] = self.spix_method == "bist"
+        self.spix_params['video_mode'] = self.spix_method == "bist"
 
     def forward(self, x, flow):
 
@@ -178,13 +185,22 @@ class SuperpixelWrapper(nn.Module):
 
             # -- prepare video --
             y = self.proj(x)
-            y = y - y.mean((1,2),keepdim=True)
-            y = y/y.std((1,2),keepdim=True)
             y = rearrange(y,'t c h w -> t h w c')
+            if self.spix_params['rgb2lab'] is True:
+                y = y - y.mean((1,2),keepdim=True)
+                y = y/y.std((1,2),keepdim=True)
             y = y.contiguous()
+            # print(self.spix_params)
+            # exit()
 
             # -- run spix --
             spix = bist.run(y,flow,**self.spix_params)
+
+            # -- alt spix --
+            # import bist_cuda
+            # flow = th.clamp(flow,-25,25)
+            # fxn = bist_cuda.bist_forward
+            # spix = fxn(y,flow,20,15,1.0,0.1,0.0,2.0,0,True,False)
 
         return spix
 
@@ -325,8 +341,23 @@ class SimNet(nn.Module):
 #
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+def expand_ndarrays(size,*ndarrays):
+    out = []
+    for ndarray in ndarrays:
+        ndarray_e = -np.ones(size)
+        ndarray_e[:len(ndarray)] = ndarray
+        out.append(ndarray_e)
+    return out
+
 def get_sims(vid,spix,scale=1.):
     T,F,H,W = vid.shape
+
+    # import st_spix
+    # # print("vid.shape, spix.shape: ",vid.shape,spix.shape)
+    # _sims = st_spix.models.bass.get_sims(vid,spix[:,None],scale)
+    # # print("_sims.shape: ",_sims.shape)
+    # return _sims
+    # # exit()
 
     # -- get compact spix ids --
     _,spix = th.unique(spix, return_inverse=True)
@@ -334,7 +365,6 @@ def get_sims(vid,spix,scale=1.):
     # -- downsample --
     vid = rearrange(vid,'t f h w -> t h w f')
     means,down = bist.get_pooled_video(vid, spix)
-    # means,down = sp_pooling(vid,spix)
 
     # -- only keep the "down" from this video subsequence --
     spids = th.arange(down.shape[1]).to(vid.device)
@@ -348,7 +378,7 @@ def get_sims(vid,spix,scale=1.):
     pwd = rearrange(pwd,'t (h w) s -> t s h w',t=T,h=H)
 
     # -- mask invalid ["empty" spix in down have "0" value] --
-    mask = ~(spix.unsqueeze(-1) == spids.view(1, 1, 1, 1, -1)).any((1, 2, 3))
+    mask = ~(spix.unsqueeze(-1) == spids.view(1, 1, 1, -1)).any((1, 2))
     pwd[mask] = th.inf
 
     # -- normalize --
@@ -362,9 +392,11 @@ class SpixConvDenoiser(nn.Module):
     defs = dict(SuperpixelWrapper.defs)
     defs.update(SuperpixelConv.defs)
     _defs = {"dim":6,"net_depth":3,
+             "conv_type":"sconv",
+             "sconv_reweight_source":"sim",
              "conv_kernel_size":3,
-             "sims_norm_scale":10.0,
-             "use_spixftrs_net":True,"spixftrs_dim":6}
+             "sims_norm_scale":10.0, # <- can remove this one
+             "use_spixftrs_net":False,"spixftrs_dim":0}
     defs.update(_defs)
 
     def __init__(self, **kwargs):
@@ -384,7 +416,7 @@ class SpixConvDenoiser(nn.Module):
 
         # -- learn attn scale --
         self.mid = nn.ModuleList([init_conv(dim,dim,conv_ksize[d+1]) for d in range(D-1)])
-        akwargs = extract(kwargs,SuperpixelWrapper.defs)
+        akwargs = extract(kwargs,SuperpixelConv.defs)
         self.sconv = nn.ModuleList([SuperpixelConv(dim,**akwargs) for _ in range(D)])
 
         # -- superpixel network with projection --
@@ -408,11 +440,16 @@ class SpixConvDenoiser(nn.Module):
             return [ksize,]*(depth+1)
 
     def get_spix(self, x, flow):
-        spix_ftrs = self.spixftrs_net(x)
-        spix = self.spix_net(spix_ftrs,flow)
-        return spix,spix_ftrs
+        # ftrs = self.conv0(x)
+        # if self.use_spixftrs_net:
+        #     spix_ftrs = self.spixftrs_net(x)
+        # else:
+        #     spix_ftrs = x
+        # spix = self.spix_net(spix_ftrs,flow)
+        spix = self.spix_net(x,flow)
+        return spix
 
-    def forward(self, x, spix, spix_ftrs):
+    def forward(self, x, spix):
         """
 
         Forward function.
@@ -422,17 +459,124 @@ class SpixConvDenoiser(nn.Module):
         # -- unpack --
         H,W = x.shape[-2:]
 
-        #-- compute sims --
-        sims = get_sims(spix_ftrs,spix,self.sims_norm_scale)
-
         # -- conv layers --
         ftrs = self.conv0(x)
         if self.net_depth >=1:
-            ftrs = ftrs+self.sconv[0](ftrs,sims) # the other slow part
+            ftrs = ftrs+self.sconv[0](ftrs,spix) # the other slow part
         for d in range(self.net_depth-1):
             ftrs = self.mid[d](ftrs)
-            ftrs = ftrs+self.sconv[d+1](ftrs,sims)
+            ftrs = ftrs+self.sconv[d+1](ftrs,spix)
 
         # -- output --
         deno = x + self.conv1(ftrs)
         return deno
+
+    def crop_forward(self,x,spix,size_t,size_s,overlap_s):
+        fwd_fxn = self.forward
+        deno = run_chunks(fwd_fxn,size_t,size_s,overlap_s,x,spix)
+        return deno
+
+
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+#
+#
+#       Run model on spatial-time crops of the video
+#
+#
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+
+# -- simpler one --
+def run_chunks(fwd_fxn,size_t,size_s,overlap_s,*inputs):
+
+    # -- unpack --
+    device = inputs[0].device
+    shape = inputs[0].shape
+    T,F,H,W = shape
+
+    # -- alloc --
+    deno = th.zeros(shape,device=device)
+    count = th.zeros((T,1,H,W),device=device)
+
+    # -- get chunks --
+    t_chunks = get_chunks(T,size_t,0.0)
+    h_chunks = get_chunks(H,size_s,overlap_s)
+    w_chunks = get_chunks(W,size_s,overlap_s)
+
+    def chunks_em(*inputs):
+        slices = (slice(t_chunk,t_chunk+size_t),
+                  Ellipsis,
+                  slice(h_chunk,h_chunk+size_s),
+                  slice(w_chunk,w_chunk+size_s))
+        return [inp[slices] for inp in inputs]
+
+    def add_chunk(agg,inp,t_chunk,h_chunk,w_chunk,sizeT,sizeH,sizeW):
+        sizeH,sizeW = deno_chunk.shape[-2:]
+        slices = (slice(t_chunk,t_chunk+sizeT),
+                  Ellipsis,
+                  slice(h_chunk,h_chunk+sizeH),
+                  slice(w_chunk,w_chunk+sizeW))
+        agg[slices] += inp
+
+    # -- loop --
+    tt,hh,ww = np.meshgrid(t_chunks,h_chunks,w_chunks,indexing='ij')
+    for chunks in zip(tt.ravel(), hh.ravel(), ww.ravel()):
+
+        # -- unpack --
+        t_chunk,h_chunk,w_chunk = chunks
+
+        # -- forward --
+        chunks = chunks_em(*inputs)
+        deno_chunk = fwd_fxn(*chunks)
+
+        # -- fill --
+        sT,_,sH,sW = deno_chunk.shape
+        add_chunk(deno,deno_chunk,t_chunk,h_chunk,w_chunk,sT,sH,sW)
+        add_chunk(count,1,t_chunk,h_chunk,w_chunk,sT,sH,sW)
+
+    # -- normalize --
+    deno = deno / count
+    return deno
+
+
+def get_chunks(size,chunk_size,overlap):
+    """
+
+    Thank you to https://github.com/Devyanshu/image-split-with-overlap/
+
+    args:
+      size = original size
+      chunk_size = size of output chunks
+      overlap = percent (from 0.0 - 1.0) of overlap for each chunk
+
+    This code splits an input size into chunks to be used for
+    split processing
+
+    Will overlap at the bottom-right to ensure all chunks are size "chunk_size"
+
+    """
+    overlap = handle_int_overlap(size,overlap)
+    points = [0]
+    stride = max(int(chunk_size * (1-overlap)),1)
+    if size <= chunk_size: return [0]
+    assert stride > 0
+    counter = 1
+    while True:
+        pt = stride * counter
+        if pt + chunk_size >= size:
+            points.append(size - chunk_size)
+            break
+        else:
+            points.append(pt)
+        counter += 1
+    points = list(np.unique(points))
+    return points
+
+def handle_int_overlap(size,overlap):
+    if overlap >= 0 and overlap < 1:
+        return overlap
+    elif overlap >= 1:
+        if isinstance(overlap,int):
+            return (1.*overlap)/size
+    else:
+        raise ValueError("Uknown behavior for overlap as a float greater than 1 or less than 0.")
