@@ -10,7 +10,6 @@ os.environ['TORCH_EXTENSION_SKIP_NVCC_GEN_DEPENDENCIES'] = '0' # "1" # for faste
 # Make sure the bin directory exists
 if not os.path.exists('bin'):
     os.makedirs('bin')
-    
 from setuptools import setup, find_packages
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
@@ -49,6 +48,8 @@ setup(
             "bist/csrc/logger.cu",
             "bist/csrc/bass.cu",
             "bist/csrc/bist.cu",
+            # -- spixconv --
+            "bist/csrc/sparse_pwd.cu",
             # -- pybind --
             "bist/csrc/pybind.cpp",
         ],

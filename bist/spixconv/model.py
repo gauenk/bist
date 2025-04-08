@@ -13,7 +13,7 @@ import torch.nn.functional as F
 # -- basic --
 import math
 import numpy as np
-from einops import rearrange
+from einops import rearrange,repeat
 from easydict import EasyDict as edict
 from collections import OrderedDict
 
@@ -48,16 +48,41 @@ class SuperpixelConv(nn.Module):
         extract_self(self,kwargs,self.defs)
         in_chnls = dim
         out_chnls = dim
+        stride = 1
         kernel_size = self.sconv_kernel_size
         self.in_dim = dim
         self.out_dim = dim
-        self.stride = 1
+        self.stride = stride
         self.padding = (kernel_size-1)//2
-        self.unfold = Unfold(kernel_size=kernel_size,
-                             stride=self.stride,padding=self.padding)
+
+        def with_pads(video):
+            pad = (kernel_size-1)//2
+            video = F.pad(video, (pad, pad, pad, pad), mode='reflect')
+            return video
+        self.with_pads = with_pads
+        def without_pads(video):
+            return video[...,pad:-pad,pad:-pad]
+        self.without_pads = without_pads
+
+        def unfold_reflect(video):
+            unfold = Unfold(kernel_size=kernel_size,
+                            stride=stride,padding=0)
+            pad = (kernel_size-1)//2
+            video = F.pad(video, (pad, pad, pad, pad), mode='reflect')
+            return unfold(video)
+        self.unfold = unfold_reflect
+        # self.unfold = Unfold(kernel_size=kernel_size,
+        #                      stride=self.stride,padding=self.padding)
         self.linear = nn.Linear(in_chnls*kernel_size *kernel_size, out_chnls)
+        self.scale_net = nn.Conv2d(in_channels=dim, out_channels=1, kernel_size=1)
+        self.scale_act = nn.Softplus()
+        nn.init.kaiming_uniform_(self.scale_net.weight, a=0.1)
+        self.scale_net.bias.data.zero_()
+        self.rweight_mean = 0
+        self.rweight_std = 0
 
     def forward(self, x, spix):
+    # def forward(self, x, sims, pix):
 
         # Extract patches and flatten them
         patches = self.unfold(x)  # Shape: (batch_size, in_channels * kernel_size * kernel_size, L)
@@ -71,18 +96,71 @@ class SuperpixelConv(nn.Module):
         bias = self.linear.bias
         kernel_size = self.sconv_kernel_size
 
+        # -- get scale --
+        scs = self.sconv_reweight_source
+        scale = 10.*self.scale_act(self.scale_net(x/(x.norm(dim=1,keepdim=True)+1e-10)))
+        # x_max = th.amax(x,(1,2,3),keepdim=True)
+        # print(x_max.shape,x.shape)
+        # exit()
+        # scale = 10.*self.scale_act(self.scale_net(x/x_max+1e-10))
+        # scale = 30.*self.scale_act(self.scale_net(x/x_max+1e-10))
+        # if scs == "ftrs":
+        #     scale = 10.*self.scale_act(self.scale_net(x/(x.norm(dim=1,keepdim=True)+1e-10)))
+        # else:
+        #     scale = 10.
+        #     # scale = 50.
+
         # -- reweight with sims --
         if self.conv_type == "sconv":
 
             # -- get reweight term for kernel --
-            sims,scs = None,self.sconv_reweight_source
-            if self.conv_type == "sconv" and scs == "sims":
-                sims = get_sims(x,spix,self.sims_norm_scale)
-            # sims = get_sims(x,spix,self.sims_norm_scale)
-            rweight = self.get_reweight(x,sims)
-            rweight = apply_norm(rweight,self.sconv_norm_type,self.sconv_norm_scale)
+            # sims,scs = None,self.sconv_reweight_source
+            scs = self.sconv_reweight_source
+            ntype,nscale = self.sconv_norm_type,self.sconv_norm_scale
+            # if self.conv_type == "sconv" and "sims" in scs:
+            #     sims = get_sims(x,spix,self.sims_norm_scale)
+            #     # sims = get_sims_v1(x,spix,self.unfold,self.sims_norm_scale)
+            #     # print(sims.shape)
+
+            if scs == "sims+ftrs":
+                rweight_s = self.get_reweight(x,sims,"sims")
+                # rweight_s = apply_norm(rweight_s,"max",0.0)
+                # rweight_s = rearrange(sims,'t k h w -> t 1 1 h w k')
+                # rweight_s = apply_norm(rweight_s,ntype,nscale)
+                # rweight_f = self.get_reweight(x,sims,"ftrs")
+                # rweight_f = apply_norm(rweight_f,"exp_max",nscale)
+                # rweight_s = rearrange(sims,'t k h w -> t 1 1 h w k')
+                # print("s: ",rweight_s[0,0,0,64,64])
+                rweight_f = self.get_reweight(x,sims,"ftrs")
+                # print("f: ",rweight_f[0,0,0,64,64])
+                rweight = rweight_f * rweight_s
+                rweight = apply_norm(rweight,"exp_max",nscale)
+                # print("c: ",rweight[0,0,0,64,64])
+            elif scs == "sims":
+                sims = get_sims_v1(x,spix,self.unfold,scale)
+                sims = rearrange(sims,'t k h w -> t 1 1 h w k')
+                scale = rearrange(scale,'t 1 h w -> t 1 1 h w 1')
+                rweight = apply_norm(sims,"exp_max",scale)
+            elif scs == "pftrs":
+                means,_ = bist.get_pooled_video(x, spix, cdim=1)
+                attn = self._run_attn(x,means,"l2")
+                scale = rearrange(scale,'t 1 h w -> t 1 1 h w 1')
+                rweight = apply_norm(attn,"exp_max",scale)
+            elif scs == "ftrs":
+                # rweight = self.get_reweight(x,None,"ftrs")
+                rweight = self._run_attn(x,x,"l2")
+                scale = rearrange(scale,'t 1 h w -> t 1 1 h w 1')
+                # scale = nscale * scale
+                # print(rweight.shape,scale.shape)
+                # exit()
+                rweight = apply_norm(rweight,ntype,scale)
+            else:
+                raise ValueError(f"Uknown reweight term [{scs}]")
+            # rweight = apply_norm(rweight,self.sconv_norm_type,self.sconv_norm_scale)
 
             # -- apply the reweighting term --
+            self.rweight_mean = rweight.mean().item()
+            self.rweight_std = rweight.std().item()
             in_dim,out_dim = self.in_dim,self.out_dim
             ksize2 = kernel_size*kernel_size
             kernel = kernel.reshape(batchsize,out_dim,in_dim,ksize2)
@@ -109,15 +187,33 @@ class SuperpixelConv(nn.Module):
         out = out.transpose(1, 2).reshape(batch_size, -1, H_out, W_out)
         return out
 
-    def get_reweight(self,ftrs,sims):
-        if self.sconv_reweight_source == "sims":
+    def get_reweight(self,ftrs,sims,source):
+        if source == "sims":
             data,dist_type = sims,"prod"
-        elif self.sconv_reweight_source == "ftrs":
+        elif source == "ftrs":
             data,dist_type = ftrs,"l2"
         else:
             stype = self.sconv_reweight_source
             raise ValueError(f"Uknown reweight source: {stype}")
-        return self._get_reweight(data,dist_type)
+        # return self._get_reweight(data,dist_type)
+        return self._run_attn(data,dist_type)
+
+    def _run_attn(self,x,y,dist_type):
+        # -- compute \sum_s p(s_i=s)p(s_j=s) --
+        ws = self.sconv_kernel_size
+        x = self.with_pads(x)[None,:].contiguous()
+        y = self.with_pads(y)[None,:].contiguous()
+        NonLocalSearch = stnls.search.NonLocalSearch
+        search = NonLocalSearch(ws,0,dist_type=dist_type,
+                                itype="int",full_ws=False,
+                                reflect_bounds=True)
+        T,B,F,H,W = x.shape
+        flows = th.zeros((B,1,T,1,2,H,W),device=x.device)
+        attn = search(x,y,flows)[0]
+        pad = self.padding
+        attn = attn[...,pad:-pad,pad:-pad,:] # remove pads
+        attn = rearrange(attn,'1 1 t h w k -> t 1 1 h w k')
+        return attn
 
     def _get_reweight(self,tensor,dist_type):
         # -- compute \sum_s p(s_i=s)p(s_j=s) --
@@ -171,7 +267,7 @@ class SuperpixelWrapper(nn.Module):
         self.spix_params = extract(kwargs,bist.default_params())
         self.spix_params['video_mode'] = self.spix_method == "bist"
 
-    def forward(self, x, flow):
+    def forward(self, x, flow, rgb2lab=False):
 
         # -- all pixels are an spix :D --
         if self.spix_method == "exh":
@@ -194,6 +290,7 @@ class SuperpixelWrapper(nn.Module):
             # exit()
 
             # -- run spix --
+            self.spix_params['rgb2lab'] = rgb2lab
             spix = bist.run(y,flow,**self.spix_params)
 
             # -- alt spix --
@@ -349,17 +446,117 @@ def expand_ndarrays(size,*ndarrays):
         out.append(ndarray_e)
     return out
 
-def get_sims(vid,spix,scale=1.):
-    T,F,H,W = vid.shape
-
-    # import st_spix
-    # # print("vid.shape, spix.shape: ",vid.shape,spix.shape)
-    # _sims = st_spix.models.bass.get_sims(vid,spix[:,None],scale)
-    # # print("_sims.shape: ",_sims.shape)
-    # return _sims
-    # # exit()
+def get_sims_v1(vid,spix,unfold,scale=1.):
 
     # -- get compact spix ids --
+    T,F,H,W = vid.shape
+    # _,spix = th.unique(spix, return_inverse=True)
+
+    # -- downsample --
+    vid = rearrange(vid,'t f h w -> t h w f')
+    means,down = bist.get_pooled_video(vid, spix)
+
+    # -- only keep the "down" from this video subsequence --
+    spids = th.arange(down.shape[1]).to(vid.device)
+    comp = spix.unsqueeze(-1) == spids.view(1, 1, 1, -1)
+    vmask = comp.any((0,1,2))
+    spids = spids[vmask]
+    down = down[:,vmask]
+
+    # -- pwd --
+    pwd = th.cdist(down,down)**2 # sum-of-squared differences
+    tgrid = th.arange(down.shape[0]).unsqueeze(1).unsqueeze(2)
+    pwd = pwd[tgrid,spix]
+    pwd = rearrange(pwd,'t h w s -> t s h w')
+
+    # -- valid indexing strat --
+    # rows, cols = th.meshgrid(th.arange(H), th.arange(W), indexing='ij')
+    # rows, cols = rows.cuda(), cols.cuda()
+    # inds = th.stack([rows,cols],0)[None,:]
+    # inds = rearrange(unfold(inds*1.),'t (f k) (h w) -> t h w k f',h=H,f=2)
+    # print(inds[0,64,64])
+    # print(inds[0,65,64,K//2])
+
+    # -- kernel indexing --
+    inds = rearrange(unfold(spix[:,None]*1.),'t k (h w) -> t k h w',h=H).long()
+    pwd = th.gather(pwd,dim=1,index=inds)
+    # mask = comp.any((1, 2),keepdim=True).repeat(1,H,W,1)
+    # mask = rearrange(mask,'t h w s -> t s h w')
+    # mask = th.gather(mask,dim=1,index=inds)
+
+    # -- normalize --
+    # sims = mask*th.exp(-scale*pwd)
+    # sims = th.exp(-scale*pwd)
+
+    # return sims
+    return pwd
+
+
+def get_sims_v2(vid,spix,spids,scale=1.0):
+
+    # -- get compact spix ids --
+    T,F,H,W = vid.shape
+    # _,spix = th.unique(spix, return_inverse=True)
+
+    # -- downsample --
+    # vid = rearrange(vid,'t f h w -> t h w f')
+    down = bist.get_pooled_video(vid, spix, return_pool=False)
+
+    # -- only keep the "down" from this video subsequence --
+    # spids = th.arange(down.shape[1]).to(vid.device)
+    # vmask = (spix.unsqueeze(-1) == spids.view(1, 1, 1, -1)).any((0,1,2))
+    # spids = spids[vmask]
+    # down = down[:,vmask]
+
+    # -- pwd --
+    pwd = th.cdist(down,down)**2 # sum-of-squared differences
+    # tgrid = th.arange(down.shape[0]).unsqueeze(1).unsqueeze(2)
+    # pwd = pwd[tgrid,spix]
+    # pwd = rearrange(pwd,'t h w s -> t s h w')
+
+    # -- mask invalid ["empty" spix in down have "0" value] --
+    # mask = ~(spix.unsqueeze(-1) == spids.view(1, 1, 1, -1)).any((1, 2))
+    # # print(pwd.shape,spix.shape,spids.shape,mask.shape)
+    # pwd[mask] = th.inf
+
+    pwd = th.exp(-scale*pwd)
+    return pwd
+
+def get_sims_v3(vid,spix,scale=1.0):
+    # -- get compact spix ids --
+    T,F,H,W = vid.shape
+    # _,spix = th.unique(spix, return_inverse=True)
+
+    # -- downsample --
+    vid = rearrange(vid,'t f h w -> t h w f')
+    means,down = bist.get_pooled_video(vid, spix)
+
+    # -- only keep the "down" from this video subsequence --
+    spids = th.arange(down.shape[1]).to(vid.device)
+    vmask = (spix.unsqueeze(-1) == spids.view(1, 1, 1, -1)).any((0,1,2))
+    spids = spids[vmask]
+    down = down[:,vmask]
+
+    # -- pwd --
+    pwd = th.cdist(down,down)**2 # sum-of-squared differences
+    tgrid = th.arange(down.shape[0]).unsqueeze(1).unsqueeze(2)
+    pwd = pwd[tgrid,spix]
+    pwd = rearrange(pwd,'t h w s -> t s h w')
+
+    # -- mask invalid ["empty" spix in down have "0" value] --
+    mask = ~(spix.unsqueeze(-1) == spids.view(1, 1, 1, -1)).any((1, 2))
+    # # print(pwd.shape,spix.shape,spids.shape,mask.shape)
+    pwd[mask] = th.inf
+
+    # -- normalize --
+    sims = th.exp(-scale*pwd)
+    return sims
+
+
+def get_sims(vid,spix,scale=1.):
+
+    # -- get compact spix ids --
+    T,F,H,W = vid.shape
     _,spix = th.unique(spix, return_inverse=True)
 
     # -- downsample --
@@ -368,7 +565,8 @@ def get_sims(vid,spix,scale=1.):
 
     # -- only keep the "down" from this video subsequence --
     spids = th.arange(down.shape[1]).to(vid.device)
-    vmask = (spix.unsqueeze(-1) == spids.view(1, 1, 1, 1, -1)).any((0,1,2,3))
+    comp = spix.unsqueeze(-1) == spids.view(1, 1, 1, -1)
+    vmask = comp.any((0,1,2))
     spids = spids[vmask]
     down = down[:,vmask]
 
@@ -378,25 +576,33 @@ def get_sims(vid,spix,scale=1.):
     pwd = rearrange(pwd,'t (h w) s -> t s h w',t=T,h=H)
 
     # -- mask invalid ["empty" spix in down have "0" value] --
-    mask = ~(spix.unsqueeze(-1) == spids.view(1, 1, 1, -1)).any((1, 2))
-    pwd[mask] = th.inf
+    # mask = ~comp.any((1,2))
+    # # mask = ~(comp).any((1, 2))
+    # pwd[mask] = th.inf
+
+    # -- mask --
+    mask = comp.any((1,2),keepdim=True).repeat(1,H,W,1)
+    mask = rearrange(mask,'t h w s -> t s h w')
+    pwd = pwd.masked_fill(mask == 0, float('-inf'))
 
     # -- normalize --
-    sims = th.softmax(-scale*pwd,1)
+    sims = mask*th.softmax(-scale*pwd,1)
 
     return sims
 
 
-class SpixConvDenoiser(nn.Module):
+class SpixConvNetwork(nn.Module):
 
     defs = dict(SuperpixelWrapper.defs)
     defs.update(SuperpixelConv.defs)
-    _defs = {"dim":6,"net_depth":3,
+    _defs = {"dim":6,"net_depth":3,"out_dims":3,
              "conv_type":"sconv",
              "sconv_reweight_source":"sim",
+             "sconv_kernel_size":7,
              "conv_kernel_size":3,
              "sims_norm_scale":10.0, # <- can remove this one
-             "use_spixftrs_net":False,"spixftrs_dim":0}
+             "use_spixftrs_net":False,"spixftrs_dim":0,
+             "task":"deno"}
     defs.update(_defs)
 
     def __init__(self, **kwargs):
@@ -407,15 +613,17 @@ class SpixConvDenoiser(nn.Module):
 
         # -- conv layers --
         dim = self.dim
+        out_dims = 3 if self.task == "deno" else 1
         D = self.net_depth
         conv_ksize = self.conv_kernel_size
         conv_ksize = self.unpack_conv_ksize(conv_ksize,self.net_depth)
-        init_conv = lambda d0,d1,ksize: nn.Conv2d(d0,d1,ksize,padding="same")
-        self.conv0 = init_conv(3,dim,conv_ksize[0])
-        self.conv1 = init_conv(dim,3,conv_ksize[-1])
+        init_conv = lambda d0,d1,ksize,g: nn.Conv2d(d0,d1,ksize,padding="same",groups=g)
+        self.conv0 = init_conv(3,dim,conv_ksize[0],3)
+        self.conv1 = init_conv(dim,out_dims,conv_ksize[-1],1)
 
         # -- learn attn scale --
-        self.mid = nn.ModuleList([init_conv(dim,dim,conv_ksize[d+1]) for d in range(D-1)])
+        self.mid0 = nn.ModuleList([init_conv(dim,dim,conv_ksize[d+1],dim) for d in range(D-1)])
+        self.mid1 = nn.ModuleList([init_conv(dim,dim,conv_ksize[d+1],dim) for d in range(D-1)])
         akwargs = extract(kwargs,SuperpixelConv.defs)
         self.sconv = nn.ModuleList([SuperpixelConv(dim,**akwargs) for _ in range(D)])
 
@@ -439,14 +647,11 @@ class SpixConvDenoiser(nn.Module):
         else:
             return [ksize,]*(depth+1)
 
-    def get_spix(self, x, flow):
-        # ftrs = self.conv0(x)
-        # if self.use_spixftrs_net:
-        #     spix_ftrs = self.spixftrs_net(x)
-        # else:
-        #     spix_ftrs = x
-        # spix = self.spix_net(spix_ftrs,flow)
-        spix = self.spix_net(x,flow)
+    def get_spix(self, x, flow, rgb2lab=False):
+        if flow.shape[1] == 2:
+            flow = rearrange(flow,'t c h w -> t h w c')
+        spix = self.spix_net(x,flow,rgb2lab)
+        _,spix = th.unique(spix, return_inverse=True) # compactify
         return spix
 
     def forward(self, x, spix):
@@ -458,24 +663,49 @@ class SpixConvDenoiser(nn.Module):
 
         # -- unpack --
         H,W = x.shape[-2:]
+        spix = th.unique(spix, return_inverse=True)[1] # compactify
 
         # -- conv layers --
         ftrs = self.conv0(x)
         if self.net_depth >=1:
-            ftrs = ftrs+self.sconv[0](ftrs,spix) # the other slow part
+            ftrs = ftrs+self.sconv[0](ftrs,spix)
         for d in range(self.net_depth-1):
-            ftrs = self.mid[d](ftrs)
+            ftrs = self.mid0[d](ftrs)+ftrs
+            ftrs = self.pooling_layer(ftrs,spix,self.mid1[d])
             ftrs = ftrs+self.sconv[d+1](ftrs,spix)
 
         # -- output --
-        deno = x + self.conv1(ftrs)
-        return deno
+        if self.task == "deno":
+            out = x + self.conv1(ftrs)
+        else:
+            out = self.conv1(ftrs)
+            out = self.apply_pooling_layer(deno,spix_x)[:,0]
+        return out
 
-    def crop_forward(self,x,spix,size_t,size_s,overlap_s):
+    def crop_forward(self,size_t,size_s,overlap_s,*inputs):
         fwd_fxn = self.forward
-        deno = run_chunks(fwd_fxn,size_t,size_s,overlap_s,x,spix)
+        deno = run_chunks(fwd_fxn,size_t,size_s,overlap_s,*inputs)
         return deno
 
+    def apply_pooling_layer(self,vid,spix):
+        vid = rearrange(vid,'t f h w -> t h w f')
+        means,down = bist.get_pooled_video(vid, spix)
+        means = rearrange(means,'t h w f -> t f h w')
+        return means
+
+    def pooling_layer(self,vid,spix,xform_layer):
+        xform = xform_layer(vid)
+        xform = rearrange(xform,'t f h w -> t h w f')
+        means,down = bist.get_pooled_video(xform, spix)
+        means = rearrange(means,'t h w f -> t f h w')
+        return means + vid
+
+    def get_rweight_stats(self):
+        means,stds = [],[]
+        for sconv in self.sconv:
+            means.append(sconv.rweight_mean)
+            stds.append(sconv.rweight_std)
+        return np.array(means),np.array(stds)
 
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
@@ -508,7 +738,7 @@ def run_chunks(fwd_fxn,size_t,size_s,overlap_s,*inputs):
                   Ellipsis,
                   slice(h_chunk,h_chunk+size_s),
                   slice(w_chunk,w_chunk+size_s))
-        return [inp[slices] for inp in inputs]
+        return [inp[slices].contiguous() for inp in inputs]
 
     def add_chunk(agg,inp,t_chunk,h_chunk,w_chunk,sizeT,sizeH,sizeW):
         sizeH,sizeW = deno_chunk.shape[-2:]

@@ -35,6 +35,9 @@
 #include "split_disconnected.h"
 #include "shift_labels.h"
 
+// -- for spix conv --
+#include "sparse_pwd.h"
+
 // using namespace cv;
 using namespace std;
 
@@ -354,12 +357,78 @@ torch::Tensor run_shift_labels_py(torch::Tensor pix_labels, torch::Tensor spix,
 }
 
 
+__global__
+void run_downpool(float* down, float* counts, float* video, int* spix,
+                  int npix, int nspix, int nftrs){
+  
+  // -- pixel index --
+  int pix_ix = threadIdx.x + blockIdx.x * blockDim.x;  
+  if (pix_ix>=npix) return;
+  int batch_ix = blockIdx.y;
+
+  // -- get segmentation index --
+  int spix_ix = spix[pix_ix+batch_ix*npix];
+  if (spix_ix < 0){ return; }
+
+  // -- add to downsampled --
+  float* imgF = video + pix_ix*nftrs + batch_ix*npix*nftrs;
+  float* dsF = down + spix_ix*nftrs + batch_ix*nspix*nftrs;
+  float* dsC = counts + spix_ix + batch_ix*nspix;
+  for (int fidx = 0; fidx < nftrs; fidx++){
+    atomicAdd(dsF+fidx,*(imgF+fidx));
+  }
+  atomicAdd(dsC,static_cast<float>(1));
+
+}
+
+torch::Tensor
+run_downpooling_py(torch::Tensor video, torch::Tensor spix){
+  
+  // -- check --
+  CHECK_INPUT(video);
+  CHECK_INPUT(spix);
+
+  // -- unpack shape --
+  int nbatch = video.size(0);
+  int height = video.size(1);
+  int width = video.size(2);
+  int nftrs = video.size(3);
+  int npix = height*width;
+  int nspix = spix.max().item<int>()+1;
+
+  // -- allocate downsampled --
+  auto options_f32 = torch::TensorOptions().dtype(torch::kFloat32)
+    .layout(torch::kStrided).device(video.device());
+  torch::Tensor down = torch::zeros({nbatch,nspix,nftrs},options_f32);
+  torch::Tensor counts = torch::zeros({nbatch,nspix,1},options_f32);
+
+  // -- unpack --
+  float* down_ptr = down.data_ptr<float>();
+  float* counts_ptr = counts.data_ptr<float>();
+  float* video_ptr = video.data_ptr<float>();
+  int* spix_ptr = spix.data_ptr<int>();
+
+  // -- run downpooling --
+  int nblocks = ceil( double(THREADS_PER_BLOCK) / double(npix) ); 
+  dim3 ThreadPerBlock(THREADS_PER_BLOCK,1);
+  dim3 BlockPerGrid(nblocks,nbatch);
+  run_downpool<<<BlockPerGrid,ThreadPerBlock>>>(down_ptr,counts_ptr,
+                                                video_ptr,spix_ptr,
+                                                npix,nspix,nftrs);
+  // -- normalize --
+  auto safe_counts = torch::where(counts == 0, torch::ones_like(counts), counts);
+  down = down/counts;
+
+  return down;
+}
 
 
 void init_bist(py::module &m){
   m.def("run_bist", &bist_forward_cuda,"BIST");
   m.def("get_marked_video", &get_marked_video,"get marked video");
   m.def("shift_labels", &run_shift_labels_py,"run shifted labels");
+  m.def("sparse_pwd",&sparse_pwd_py,"sparse pwd for spix deltas.");
+  m.def("downpool",&run_downpooling_py,"downsampled pooling layer.");
   // m.def("bass_forward", &bass_forward_cuda,
   //       "BASS");
 }

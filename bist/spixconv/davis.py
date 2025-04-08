@@ -21,13 +21,13 @@ from torch.utils.data import DataLoader
 import torchvision.transforms as T
 import torchvision.transforms.functional as xformF
 
-def get_davis_dataset(tr_nframes=-1):
+def get_davis_dataset(tr_nframes=-1,shrink=False):
 
     # -- dataset --
     data = edict()
-    data.tr = DAVIS(DAVIS_ROOT,"train-val",tr_nframes)
-    data.val = DAVIS(DAVIS_ROOT,"val",-1)
-    data.te = DAVIS(DAVIS_ROOT,"test-dev",-1)
+    data.tr = DAVIS(DAVIS_ROOT,"train-val",tr_nframes,shrink)
+    data.val = DAVIS(DAVIS_ROOT,"val",-1,shrink)
+    data.te = DAVIS(DAVIS_ROOT,"test-dev",-1,shrink)
 
     return data
 
@@ -56,10 +56,11 @@ def get_loaders(data,num_workers,seed):
 
 class DAVIS():
 
-    def __init__(self,root,split,nframes):
+    def __init__(self,root,split,nframes,shrink=False):
 
         # -- load paths --
         root = Path(root)
+        self.shrink = shrink
         self.vnames = _get_vid_names(root/("ImageSets/2017/%s.txt"%split))
         self.paths = read_files(root/"JPEGImages/480p/",self.vnames,nframes)
         self.groups = sorted(list(self.paths.keys()))
@@ -87,6 +88,18 @@ class DAVIS():
         vid_files = self.paths[group]
         video = _read_video(vid_files)
         anno = _read_annos(vid_files,video.shape)
+        anno = th.where(anno>0,1,0).float() # only binary
+
+        # -- rescale for easier exps --
+        import torchvision.transforms.v2.functional as F
+        from torchvision.transforms import InterpolationMode
+
+        # -- shrink --
+        if self.shrink:
+            H,W = video.shape[-2:]
+            video = F.resize(video,(H//2,W//2),InterpolationMode.BILINEAR)
+            anno = F.resize(anno,(H//2,W//2),InterpolationMode.NEAREST)
+
         return video,anno,index
 
 
@@ -172,10 +185,27 @@ def read_files(iroot,vnames,nframes):
     return files
 
 
+def get_random_crop(video,anno,size,task):
+    if task == "seg":
+        return random_anno_crop(video,anno,size)
+    else:
+        return random_crop(video,anno,size)
+
 def random_crop(video,anno,size):
     F = xformF
     i, j, h, w = T.RandomCrop.get_params(video[0], output_size=[size,size])
     video = th.stack([F.crop(frame, i, j, h, w) for frame in video])
     anno = th.stack([F.crop(anno_f, i, j, h, w) for anno_f in anno])
+    return video,anno
+
+def random_anno_crop(video,anno,patch_size,athresh=0.20,max_iters=100):
+    ix = 0
+    _video,_anno = random_crop(video,anno,patch_size)
+    while (_anno.mean() < athresh) and (ix < max_iters):
+        _video_,_anno_ = random_crop(video,anno,patch_size)
+        if _anno.mean() < _anno_.mean():
+            _video,_anno = _video_,_anno_
+        ix += 1
+    video,anno = _video,_anno
     return video,anno
 

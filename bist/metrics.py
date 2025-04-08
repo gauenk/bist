@@ -159,6 +159,20 @@ def compute_psnrs(clean,deno,div=1.):
         psnrs.append(psnr_ti)
     return np.array(psnrs)
 
+def seg_metrics(pred,anno):
+    pred = th.sigmoid(pred)
+    print(th.unique(anno.ravel()))
+    assert len(th.unique(anno.ravel())) <= 2
+    args_p = th.where(anno==1)
+    args_n = th.where(anno==0)
+    npos = 1.*anno[args_p].numel() + 1.*(anno[args_p].numel()==0)
+    nneg = 1.*anno[args_n].numel() + 1.*(anno[args_n].numel()==0)
+    tpos = (pred[args_p]>0.5).sum()/npos
+    tneg = (pred[args_n]<0.5).sum()/nneg
+    perc_pos = npos / (npos + nneg)
+    return tpos,tneg,perc_pos
+
+
 def compute_strred(clean,deno,div=1):
 
     # -- optional batching --

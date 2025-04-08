@@ -114,13 +114,16 @@ def shift_labels(labels,spix,flow,sizes=None):
 #     pool,down = pooling(vid,mask,mask.max().item()+1)
 #     return pool,down
 
-def get_pooled_video(vid, mask, use3d=False):
+def get_pooled_video(vid, mask, use3d=False, return_pool=True, cdim=-1):
 
     """
     Compute the average value of the vid for each unique mask value and return both:
     - "down": shape (T, S, C), where S is the max mask value + 1
     - "pool": shape (T, H, W, C), where each pixel is replaced by its mask's average value
     """
+
+    if cdim == 1:
+        vid = rearrange(vid,'t c h w -> t h w c').contiguous()
 
     vid = vid.float()  # Ensure the video tensor is float
     T, H, W, C = vid.shape  # Unpack the shape with (T, H, W, C)
@@ -148,10 +151,10 @@ def get_pooled_video(vid, mask, use3d=False):
     down /= count
 
     # Map back to full resolution (restore to (T, H, W, C) shape)
-    pool = down.gather(1, mask_flat.unsqueeze(2).expand(-1, -1, C)).view(T, H, W, C)
-
-    # Final reshape for "down" to (T, S, C)
-    # down = rearrange(down, 't s c -> t s c')
-    # pool = rearrange(pool, 't h w c -> t h w c')
-
-    return pool, down
+    if return_pool:
+        pool = down.gather(1, mask_flat.unsqueeze(2).expand(-1, -1, C)).view(T, H, W, C)
+        if cdim == 1:
+            pool = rearrange(pool,'t h w c -> t c h w').contiguous()
+        return pool, down
+    else:
+        return down
