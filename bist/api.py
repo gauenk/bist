@@ -11,6 +11,7 @@ import subprocess
 
 # -- connect to c++/cuda api --
 import bin.bist_cuda
+import bin.bist_cuda as bist_cuda
 from .utils import extract
 from ._paths import BIST_HOME
 
@@ -76,6 +77,7 @@ def run_bin(vid_root,flow_root,spix_root,img_ext,**kwargs):
     cmd = "%s -n %d -d %s/ -f %s/ -o %s/ --read_video %d --img_ext %s --sigma_app %2.5f --potts %2.2f --alpha %2.3f --split_alpha %2.3f --tgt_nspix %d --iperc_coeff %2.2f --thresh_relabel %1.8f --thresh_new %1.8f --prop_nc %d --prop_icov %d --logging %d --nimgs %d --save_only_spix %d" % (bist_bin,sp_size,vid_root,flow_root,spix_root,read_video,img_ext,sigma_app,potts,alpha,split_alpha,tgt_nspix,iperc_coeff,thresh_relabel,thresh_new,prop_nc,prop_icov,logging,nimgs,save_only_spix)
 
     # -- run binary --
+    print(cmd)
     if verbose:
         print(cmd)
     output = subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout

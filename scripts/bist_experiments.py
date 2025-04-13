@@ -21,10 +21,48 @@ def bass_exps(default):
     return exps
 
 def split_step_exps(default):
-    config = {"iperc_coeff":[0.0,4.0,8.0],
-              "alpha":[math.log(0.1),math.log(0.5),0.0,math.log(2.0)],
-              "group":["split"]}
+    # config = {"iperc_coeff":[0.0,4.0,8.0], # include 2 and 6?
+    #           "alpha":[math.log(0.1),math.log(0.5),
+    #                    0.0,math.log(2.0),math.log(10.)],
+    #           "group":["split_g0"]}
+    # exps = bist.utils.get_exps(config,default)
+    # config = {"iperc_coeff":[0.0],
+    #           "split_alpha":[0.0,-4.0,-8.0],
+    #           "alpha":[math.log(0.5)],
+    #           "group":["split_g1"]}
+    # exps += bist.utils.get_exps(config,default)
+    # config = {"iperc_coeff":[0.0],
+    #           "alpha":[-5.0,-10.0,-20.0,-50.0],
+    #           "group":["split_g2"]}
+    # exps += bist.utils.get_exps(config,default)
+    config = {"iperc_coeff":[0.0,1.0,2.0,3.0,4.0,5.0,
+                             6.0,7.0,8.0,9.0,10.0],
+              "alpha":[math.log(0.5),0.,math.log(2.0)],
+              "group":["split_g5"]}
     exps = bist.utils.get_exps(config,default)
+    print(len(exps))
+    exps = exps[11:]
+    print(len(exps))
+    return exps
+
+def split_step_for_rep_exps(default):
+    config = {"iperc_coeff":[0.0],
+              "alpha":[-10.0,-20.0,-50.0],
+              "group":["rsplit_g0"]}
+    exps = bist.utils.get_exps(config,default)
+    config = {"iperc_coeff":[4.0],
+              "alpha":[math.log(10.)],
+              "group":["rsplit_g1"]}
+    exps += bist.utils.get_exps(config,default)
+    config = {"iperc_coeff":[4.0],
+              "alpha":[math.log(0.1)],
+              "group":["rsplit_g2"]}
+    exps += bist.utils.get_exps(config,default)
+    config = {"iperc_coeff":[8.0],
+              "alpha":[math.log(0.5)],
+              "group":["rsplit_g3"]}
+    exps += bist.utils.get_exps(config,default)
+
     return exps
 
 def relabeling_exps(default):
@@ -94,46 +132,57 @@ def main():
                "video_mode":True,"flow":"default","group":"bist","nimgs":0}
 
     # -- save root --
-    save_root = Path("results/")/dname
+    # save_root = Path("results_v2/")/dname
+    save_root = Path("results_v3/")/dname
     if not save_root.exists():
         save_root.mkdir(parents=True)
 
     # -- collect experiment grids --
-    exps = bass_exps(default)
-    exps += bist_exps(default)
-    exps += split_step_exps(default)
-    exps += relabeling_exps(default)
-    exps += boundary_shape_exps(default)
+    # exps = bist_exps(default)
+    # exps += bass_exps(default)
+    # exps += split_step_exps(default)
+    # exps += relabeling_exps(default)
+    # exps += boundary_shape_exps(default)
+    exps = split_step_exps(default)
+    # print(exps)
 
     # -- run each experiment a few times --
     nreps = 1
     for exp in exps:
+        print(exp)
         for rep in range(nreps):
             spix_root = save_root / exp['group'] / exp['id'] / ("rep%d"%rep)
             save_exp_info(exp,save_root / "info")
             run_exp(dname,exp,spix_root)
+    return
 
-    # -- run [conditional boundary] several times --
-    exps = conditioned_boundary_updates_exps(default)
+
+    # -- run [split step & conditional boundary] several times --
+    exps = split_step_for_rep_exps(default)
+    print(exps)
     nreps = 10
-    for exp in exps:
-        for rep in range(nreps):
-            spix_root = save_root / exp['group'] / exp['id'] / ("rep%d"%rep)
-            save_exp_info(exp,save_root / "info")
-            run_exp(dname,exp,spix_root)
+    # exps += conditioned_boundary_updates_exps(default)
+    # nreps = 10
+    # for exp in exps:
+    #     for rep in range(5,nreps):
+    #         spix_root = save_root / exp['group'] / exp['id'] / ("rep%d"%rep)
+    #         save_exp_info(exp,save_root / "info")
+    #         run_exp(dname,exp,spix_root)
 
     # -- run [optical flow] on segtrackv2 --
-    dname = "segtrackv2"
-    save_root = Path("results/")/dname
-    if not save_root.exists():
-        save_root.mkdir(parents=True)
-    exps = optical_flow_exps(default) # only on segtrack
-    nreps = 1
-    for exp in exps:
-        for rep in range(nreps):
-            spix_root = save_root / exp['group'] / exp['id'] / ("rep%d"%rep)
-            save_exp_info(exp,save_root / "info")
-            run_exp(dname,exp,spix_root)
+    # dname = "segtrackv2"
+    # save_root = Path("results_v2/")/dname
+    # if not save_root.exists():
+    #     save_root.mkdir(parents=True)
+    # exps = bist_exps(default)
+    # exps += bass_exps(default)
+    # exps += optical_flow_exps(default)
+    # nreps = 1
+    # for exp in exps:
+    #     for rep in range(nreps):
+    #         spix_root = save_root / exp['group'] / exp['id'] / ("rep%d"%rep)
+    #         save_exp_info(exp,save_root / "info")
+    #         run_exp(dname,exp,spix_root)
 
 
 if __name__ == "__main__":

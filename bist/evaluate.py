@@ -13,7 +13,7 @@ from einops import rearrange
 
 import bist
 
-def run(vid,anno,spix):
+def run(vid,anno,spix,ref_spix=None):
 
     # -- setup --
     spix = spix - spix.min() # fix offset by one
@@ -46,6 +46,15 @@ def run(vid,anno,spix):
     # -- summary stats --
     summ.spnum = spix.max().item()+1
     summ.ave_nsp = average_unique_spix(sizes)
+    summ.std_nsp = std_unique_spix(sizes)
+
+    # -- compare nspix with reference --
+    summ.ave_delta_nsp = -1
+    summ.std_delta_nsp = -1
+    if not(ref_spix is None):
+        ref_sizes = count_spix(ref_spix)
+        summ.ave_delta_nsp = ave_delta_nspix(sizes,ref_sizes)
+        summ.std_delta_nsp = std_delta_nspix(sizes,ref_sizes)
 
     # -- optional strred --
     summ.strred0 = -1
@@ -93,6 +102,18 @@ def rgb_to_luminance_torch(rgb):
 
 def average_unique_spix(sizes):
     return th.mean(1.*th.sum(sizes>0,-1)).item() # sum across spix; ave across time
+def std_unique_spix(sizes):
+    return th.std(1.*th.sum(sizes>0,-1)).item() # sum across spix; ave across time
+
+def ave_delta_nspix(sizes,ref_sizes):
+    nsp_by_frame = 1.*th.sum(sizes>0,-1)
+    ref_nsp_by_frame = 1.*th.sum(ref_sizes>0,-1)
+    return th.mean((nsp_by_frame - ref_nsp_by_frame)**2)
+def std_delta_nspix(sizes,ref_sizes):
+    nsp_by_frame = 1.*th.sum(sizes>0,-1)
+    ref_nsp_by_frame = 1.*th.sum(ref_sizes>0,-1)
+    return th.std((nsp_by_frame - ref_nsp_by_frame)**2)
+
 
 def scoreSpixPoolingQualityByFrame(vid,spix,metric="psnr"):
     # -- setup --

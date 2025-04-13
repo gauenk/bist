@@ -386,6 +386,7 @@ __global__ void init_sm(const float* img, const int* seg_gpu,
     sm_helper[k].hasting = -999999;
     //sp_params[k].count = 0;
 
+
     sm_helper[k].merge = false;
     sm_helper[k].remove = false;
 

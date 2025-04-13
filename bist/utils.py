@@ -114,6 +114,7 @@ def save_spix(spix, root, fmt):
         pd.DataFrame(spix_t).to_csv(fname,header=False,index=None)
 
 def save_video(video, root, fmt):
+    # fmt = "%05d.png"
 
     root = Path(root)
     if not root.exists():
@@ -138,7 +139,7 @@ def crop_image(img,crop):
 
 def read_video_by_name(dname,vname):
     iroot = get_image_root(dname)/vname
-    return read_video(root)
+    return read_video(iroot)
 
 def read_video(root):
     image_files = sorted([f for f in os.listdir(str(root)) if f.endswith(('.png', '.jpg'))])
@@ -289,6 +290,10 @@ def read_flo(filename, precision="32"):
 
 def read_cache(root,dname,vname,group,exp_id):
     fname = root / ("%s_%s_%s_%s.csv" % (dname,vname,group,exp_id))
+    return _read_cache(fname)
+
+def _read_cache(fname):
+    if isinstance(fname,str): fname = Path(fname)
     if not fname.exists(): return None
     else:
         try:
@@ -298,8 +303,17 @@ def read_cache(root,dname,vname,group,exp_id):
 
 def save_cache(results,root,dname,vname,group,exp_id):
     fname = root / ("%s_%s_%s_%s.csv" % (dname,vname,group,exp_id))
+    _save_cache(results,fname)
+    # if not root.exists(): root.mkdir(parents=True)
+    # pd.DataFrame(results).to_csv(fname)
+
+def _save_cache(results,fname):
+    if isinstance(fname,str): fname = Path(fname)
+    root = fname.parents[0]
     if not root.exists(): root.mkdir(parents=True)
     pd.DataFrame(results).to_csv(fname)
+
+
 
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
