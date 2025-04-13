@@ -2,17 +2,17 @@ import bist
 import torch as th
 
 # Select Video & Aesthetic Threshold
-vname,thresh_new = "kid-football",0.05
-#vname,thresh_new = "hummingbird",0.1
+vname,epsilon_new = "kid-football",0.05
+#vname,epsilon_new = "hummingbird",0.1
 
 # Read the video & optical flow
-vid = bist.utils.read_video("data/examples/%s/imgs"%vname).cuda()
+vid = bist.utils.read_video("data/examples/%s/imgs"%vname).cuda()/255.
 flows = bist.utils.read_flows("data/examples/%s/flows"%vname).cuda()
 # vid.shape = (T,H,W,C)
 # flows.shape = (T-1,H,W,2)
 
 # Run BIST
-kwargs = {"n":25,"read_video":True,"iperc_coeff":4.0,"thresh_new":thresh_new,'rgb2lab':True}
+kwargs = {"n":25,"read_video":True,"gamma":4.0,"epsilon_new":epsilon_new,'rgb2lab':True}
 spix = bist.run(vid,flows,**kwargs)
 
 # Mark the image with the superpixels

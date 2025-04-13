@@ -35,23 +35,20 @@
 #include "split_disconnected.h"
 #include "shift_labels.h"
 
-// -- for spix conv --
-#include "sparse_pwd.h"
-
 // using namespace cv;
 using namespace std;
 
 
 torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
                         int niters, int sp_size, float sigma_app,
-                        float potts, float alpha, float iperc_coeff,
-                        float thresh_new, float thresh_relabel,
+                        float potts, float alpha, float gamma,
+                        float epsilon_new, float epsilon_reid,
                         float split_alpha, int target_nspix,
                         bool video_mode, bool rgb2lab_b){
 
   // -- viz inputs --
-  // printf("niters: %d, sp_size: %d, sigma_app: %.3f, potts: %.3f, alpha: %.3f, iperc_coeff: %.3f, thresh_new: %.3f, thresh_relabel: %.3f, split_alpha: %.3f, target_nspix: %d, video_mode: %s\n",
-  //   niters, sp_size, sigma_app, potts, alpha, iperc_coeff, thresh_new, thresh_relabel, split_alpha, target_nspix, video_mode ? "true" : "false");  
+  // printf("niters: %d, sp_size: %d, sigma_app: %.3f, potts: %.3f, alpha: %.3f, gamma: %.3f, epsilon_new: %.3f, epsilon_reid: %.3f, split_alpha: %.3f, target_nspix: %d, video_mode: %s\n",
+  //   niters, sp_size, sigma_app, potts, alpha, gamma, epsilon_new, epsilon_reid, split_alpha, target_nspix, video_mode ? "true" : "false");  
 
   // -- unpack shape --
   int nframes = vid.size(0);
@@ -72,9 +69,9 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
   float merge_alpha = 0.0;
 
   // -- not controlled in python --
-  //float thresh_relabel = 1e-5;
-  //float thresh_new = 5e-2;
-  //float iperc_coeff = 4.0;
+  //float epsilon_reid = 1e-5;
+  //float epsilon_new = 5e-2;
+  //float gamma = 4.0;
 
   // -- alloc options --
   auto options_f32 = torch::TensorOptions().dtype(torch::kFloat32)
@@ -166,8 +163,8 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
                           niters, niters_seg, sm_start,
                           sp_size,sigma2_app,sigma2_size,
                           potts,alpha,filled_spix,shifted_spix,params_prev,
-                          thresh_relabel, thresh_new,
-                          merge_alpha, split_alpha, iperc_coeff, target_nspix, true);
+                          epsilon_reid, epsilon_new,
+                          merge_alpha, split_alpha, gamma, target_nspix, true);
       spix = std::get<0>(out);
       border = std::get<1>(out);
       params = std::get<2>(out);
@@ -212,8 +209,8 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
 torch::Tensor
 bist_forward_cuda(const torch::Tensor vid, const torch::Tensor flows,
                   int niters, int sp_size, float potts,
-                  float sigma_app, float alpha, float iperc_coeff,
-                  float thresh_new, float thresh_relabel, float split_alpha, 
+                  float sigma_app, float alpha, float gamma,
+                  float epsilon_new, float epsilon_reid, float split_alpha, 
                   int target_nspix, bool video_mode, bool rgb2lab_b){
 
   // -- check --
@@ -221,8 +218,8 @@ bist_forward_cuda(const torch::Tensor vid, const torch::Tensor flows,
   CHECK_INPUT(flows);
 
   auto out = main_loop(vid, flows, niters,  sp_size,
-                       sigma_app, potts, alpha,  iperc_coeff,
-                       thresh_new, thresh_relabel,
+                       sigma_app, potts, alpha,  gamma,
+                       epsilon_new, epsilon_reid,
                        split_alpha, target_nspix, video_mode, rgb2lab_b);
 
   return out;
@@ -427,7 +424,6 @@ void init_bist(py::module &m){
   m.def("run_bist", &bist_forward_cuda,"BIST");
   m.def("get_marked_video", &get_marked_video,"get marked video");
   m.def("shift_labels", &run_shift_labels_py,"run shifted labels");
-  m.def("sparse_pwd",&sparse_pwd_py,"sparse pwd for spix deltas.");
   m.def("downpool",&run_downpooling_py,"downsampled pooling layer.");
   // m.def("bass_forward", &bass_forward_cuda,
   //       "BASS");

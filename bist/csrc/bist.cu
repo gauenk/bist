@@ -74,8 +74,8 @@ __host__ int run_bist_alg(float* img, int* seg, int* shifted,
                           int nspix, int nspix_buffer,
                           int nbatch, int width, int height, int nftrs,
                           SuperpixelParams* params_prev, int nspix_prev,
-                          float thresh_relabel, float thresh_new,
-                          float merge_alpha, float split_alpha, float iperc_coeff,
+                          float epsilon_reid, float epsilon_new,
+                          float merge_alpha, float split_alpha, float gamma,
                           int target_nspix, bool prop_flag, Logger* logger){
 
     // -- init --
@@ -83,14 +83,6 @@ __host__ int run_bist_alg(float* img, int* seg, int* shifted,
     int npix = height * width;
     int max_spix = nspix-1;
     
-    /*******************************************
-             RELABEL different/new spix
-    ********************************************/
-    // thrust::device_vector<int> prop_ids = extract_unique_ids(seg, npix, 0);
-    // max_spix = relabel_spix(seg,sp_params,params_prev,prop_ids,
-    //                         thresh_relabel,thresh_new,
-    //                         height,width,nspix_prev,max_spix);
-
     // -- controlled nspix --
     int og_niters = niters;
     bool nspix_controlled = target_nspix>0;
@@ -130,7 +122,7 @@ __host__ int run_bist_alg(float* img, int* seg, int* shifted,
             merge_alpha = 0.;
           }
           if ((idx > 2000) and (idx%200 == 0)){ // mark to new if  can't fix # spix
-            thresh_new = 2*(thresh_new+1e-5);
+            epsilon_new = 2*(epsilon_new+1e-5);
           }
           bool accept_cond = (nliving < 1.05*target_nspix);
           accept_cond = accept_cond and (nliving > 0.95*target_nspix);
@@ -145,7 +137,7 @@ __host__ int run_bist_alg(float* img, int* seg, int* shifted,
           // count = 2;
           max_spix = run_split_p(img, seg, shifted, border, sp_params,
                                  sp_helper, sm_helper, sm_seg1, sm_seg2, sm_pairs,
-                                 alpha_hastings, split_alpha, iperc_coeff,
+                                 alpha_hastings, split_alpha, gamma,
                                  sigma2_app, sigma2_size,
                                  count, idx, max_spix,
                                  sp_size,npix,nbatch,width,
@@ -163,7 +155,7 @@ __host__ int run_bist_alg(float* img, int* seg, int* shifted,
         if( idx%4 == 3){
           thrust::device_vector<int> prop_ids = extract_unique_ids(seg, npix, 0);
           max_spix = relabel_spix(seg,sp_params,params_prev,prop_ids,
-                                  thresh_relabel,thresh_new,
+                                  epsilon_reid,epsilon_new,
                                   height,width,nspix_prev,max_spix,logger);
           run_merge_p(img, seg, border, sp_params,
                       sp_helper, sm_helper, sm_seg1, sm_seg2, sm_pairs,
@@ -230,9 +222,9 @@ run_bist(float* img, int nbatch, int height, int width, int nftrs,
          float sigma2_app, float sigma2_size,
          float potts, float alpha_hastings,
          int* spix_prev, int* shifted_spix, SuperpixelParams* params_prev,
-         float thresh_relabel, float thresh_new,
+         float epsilon_reid, float epsilon_new,
          float merge_alpha, float split_alpha,
-         float iperc_coeff, int target_nspix, bool prop_flag, Logger* logger){
+         float gamma, int target_nspix, bool prop_flag, Logger* logger){
 
 
     // -- unpack --
@@ -280,58 +272,18 @@ run_bist(float* img, int nbatch, int height, int width, int nftrs,
                                 niters, niters_seg, sm_start, sigma2_app, sigma2_size,
                                 sp_size, potts, alpha_hastings, nspix, nspix_buffer,
                                 nbatch, width, height, nftrs,params_prev,nspix_prev,
-                                thresh_relabel,thresh_new,merge_alpha,split_alpha,
-                                iperc_coeff,target_nspix,prop_flag,logger);
+                                epsilon_reid,epsilon_new,merge_alpha,split_alpha,
+                                gamma,target_nspix,prop_flag,logger);
     // printf("[after] max_spix: %d\n",max_spix);
     int prev_max_spix = max_spix;
     // printf("after.\n");
     // view_invalid(sp_params,nspix);
 
-    // int max_spix = bass(img, _spix, sp_params,
-    //                     border, sp_helper, sm_helper, sm_seg1, sm_seg2, sm_pairs,
-    //                     niters, niters_seg, sm_start, sigma2_app, sigma2_size,
-    //                     sp_size, potts, alpha_hastings, nspix, nspix_buffer,
-    //                     nbatch, width, height, nftrs);
-    // _print_min_max(_spix, npix);
-    // // int max_spix = nspix-1;
-
-    // gpuErrchk( cudaPeekAtLastError() );
-    // gpuErrchk( cudaDeviceSynchronize() );
-    // printf("0.\n");
-
-    // -- get unique ids --
-    // int* prop_ids_ptr = thrust::raw_pointer_cast(prop_ids.data());
-    // gpuErrchk( cudaPeekAtLastError() );
-    // gpuErrchk( cudaDeviceSynchronize() );
-    // _print_min_max(prop_ids_ptr, prop_ids.size());//debug
-    // int min_id = *thrust::min_element(prop_ids.begin(), prop_ids.end());
-    // int max_id = *thrust::max_element(prop_ids.begin(), prop_ids.end());
-    // std::cout << "Max/Min element: " << max_id << ", " << min_id << std::endl;
-    // printf("1.\n");
-
-
     // -- relabel --
     thrust::device_vector<int> prop_ids = extract_unique_ids(_spix, npix, 0);
-    // max_spix = relabel_spix(_spix,sp_params,params_prev,prop_ids,
-    //                         thresh_relabel,thresh_new,
-    //                         height,width,nspix_prev,max_spix);
-    // update_params(img, _spix, sp_params, sp_helper, sigma2_app,
-    //               npix, sp_size, nspix_buffer, nbatch, width, nftrs);
     int nalive = prop_ids.size();
-    //printf("nliving: %d\n",nalive);
-    // // printf("[after relabel_spix] max_spix: %d\n",max_spix);
-
-
-    // printf("[after] nalive: %d\n",nalive);
-    // int _min_spix, _max_spix;
-    // std::tie(_min_spix, _max_spix) = _get_min_max(_spix,npix);
-    // assert(_max_spix == max_spix);
-    // printf("nalive,_min_spix,_max_spix,max_spix,prev_max_spix,nspix_prev: %d,%d,%d,%d,%d,%d\n",nalive,_min_spix,_max_spix,max_spix,prev_max_spix,nspix_prev);
-    // _print_min_max(_spix, npix);
-    // printf("2.\n");
 
     // -- only keep superpixels which are alive --
-    // thrust::device_vector<int> new_ids = extract_unique_ids(_spix, npix, nspix_prev);
     thrust::device_vector<int> new_ids = remove_old_ids(prop_ids,nspix_prev);
     nspix = compactify_new_superpixels(_spix,sp_params,new_ids,
                                        nspix_prev,max_spix,npix);

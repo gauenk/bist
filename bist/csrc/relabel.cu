@@ -130,7 +130,7 @@ void mark_for_relabel(bool* relabel,
                       float* ss_comps,
                       bool* is_living, int* max_spix,
                       int nspix, int nspix_prev,
-                      float thresh_replace, float thresh_new){
+                      float epsilon_reid, float epsilon_new){
 
   // -- get superpixel index --
   int spix_id = threadIdx.x + blockIdx.x*blockDim.x;
@@ -160,7 +160,7 @@ void mark_for_relabel(bool* relabel,
   //   printf("%d,%d,%2.4f\n",spix_id,candidate_spix,delta);
   // }
   // if( (spix_id < nspix_prev) and (candidate_spix == spix_id)){
-  //   printf("%d,%d,%2.4f,%2.4f\n",spix_id,candidate_spix,delta,thresh_new);
+  //   printf("%d,%d,%2.4f,%2.4f\n",spix_id,candidate_spix,delta,epsilon_new);
   // }
 
   // -- dev --
@@ -173,7 +173,7 @@ void mark_for_relabel(bool* relabel,
 
   relabel[spix_id] = false;
   relabel_id[spix_id] = -1;
-  bool cond_revive = (delta < thresh_replace);
+  bool cond_revive = (delta < epsilon_reid);
   cond_revive = cond_revive and (candidate_spix < nspix);
   cond_revive = cond_revive and (candidate_spix != spix_id);
   if (cond_revive){
@@ -183,7 +183,7 @@ void mark_for_relabel(bool* relabel,
     relabel[spix_id] = (candidate_spix != spix_id);
     relabel_id[spix_id] = candidate_spix;
     // printf("[relabel] revive: %d -> %d\n",spix_id,candidate_spix);
-  }else if (ss_delta > thresh_new){// and (candidate_spix == spix_id)){
+  }else if (ss_delta > epsilon_new){// and (candidate_spix == spix_id)){
     // -- [c] --
     relabel[spix_id] = true;
     int new_label = atomicAdd(max_spix,1)+1; // indicates a new one.
@@ -282,7 +282,7 @@ void find_most_similar_spix(uint64_t* comparisons,
 int relabel_spix(int* spix, spix_params* sp_params,
                  SuperpixelParams* params_prev,
                  thrust::device_vector<int>& living_ids,
-                 float thresh_replace, float thresh_new,
+                 float epsilon_reid, float epsilon_new,
                  int height, int width, int nspix_prev, int _max_spix, Logger* logger){
 
   // -- log input --
@@ -366,7 +366,7 @@ int relabel_spix(int* spix, spix_params* sp_params,
   mark_for_relabel<<<BlocksSpix,NumThreads>>>(relabel,relabel_id,
                    comparisons,ss_comps,
                    is_living_ptr, max_spix_gpu,
-                   nspix, nspix_prev, thresh_replace, thresh_new);
+                   nspix, nspix_prev, epsilon_reid, epsilon_new);
   // gpuErrchk( cudaPeekAtLastError() );
   // gpuErrchk( cudaDeviceSynchronize() );
   // exit(1);

@@ -262,7 +262,7 @@ void Logger::log_merge(int* seg, int* sm_pairs, int nspix) {
 __global__
 void log_relabel_kernel(uint64_t* comparisons, float* ss_comps,
                         bool* is_living,  int* relabel_id, float* logging,
-                        float thresh_new, float thresh_replace, int nspix){
+                        float epsilon_new, float epsilon_reid, int nspix){
 
 
   // -- get superpixel index --
@@ -283,7 +283,7 @@ void log_relabel_kernel(uint64_t* comparisons, float* ss_comps,
   float delta = *reinterpret_cast<float*>(&delta32);
 
   // -- revive? --
-  bool cond_revive = (delta < thresh_replace);
+  bool cond_revive = (delta < epsilon_reid);
   cond_revive = cond_revive and (candidate_spix < nspix);
   cond_revive = cond_revive and (candidate_spix != spix_id);
 
@@ -293,7 +293,7 @@ void log_relabel_kernel(uint64_t* comparisons, float* ss_comps,
   logging_ix[1] = 1.0*candidate_spix;
   logging_ix[2] = delta;
   logging_ix[3] = cond_revive ? 1.0 : 0.0;
-  logging_ix[4] = (ss_delta > thresh_new) ? 1.0 : 0.0;
+  logging_ix[4] = (ss_delta > epsilon_new) ? 1.0 : 0.0;
   logging_ix[5] = relabel_id[spix_id];
 
 }
@@ -313,7 +313,7 @@ void Logger::log_relabel(int* spix){
 
 
 // void Logger::log_relabel_old(uint64_t* comparisons, float* ss_comps, bool* is_living,
-//                          int* relabel_id, float thresh_new, float thresh_replace, int max_spix){
+//                          int* relabel_id, float epsilon_new, float epsilon_reid, int max_spix){
 
 //     // -- ... --
 //     thrust::device_vector<float> relabel(6*max_spix);
@@ -336,7 +336,7 @@ void Logger::log_relabel(int* spix){
 //     dim3 ThreadPerBlock(THREADS_PER_BLOCK,1);
 //     log_relabel_kernel<<<BlockPerGrid,ThreadPerBlock>>>(comparisons, ss_comps, is_living,
 //                                                         relabel_id, logging_relabel,
-//                                                         thresh_new, thresh_replace, max_spix);
+//                                                         epsilon_new, epsilon_reid, max_spix);
 
 //     // -- save --
 //     std::ostringstream save_dir;

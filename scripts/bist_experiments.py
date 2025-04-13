@@ -21,21 +21,21 @@ def bass_exps(default):
     return exps
 
 def split_step_exps(default):
-    # config = {"iperc_coeff":[0.0,4.0,8.0], # include 2 and 6?
+    # config = {"gamma":[0.0,4.0,8.0], # include 2 and 6?
     #           "alpha":[math.log(0.1),math.log(0.5),
     #                    0.0,math.log(2.0),math.log(10.)],
     #           "group":["split_g0"]}
     # exps = bist.utils.get_exps(config,default)
-    # config = {"iperc_coeff":[0.0],
+    # config = {"gamma":[0.0],
     #           "split_alpha":[0.0,-4.0,-8.0],
     #           "alpha":[math.log(0.5)],
     #           "group":["split_g1"]}
     # exps += bist.utils.get_exps(config,default)
-    # config = {"iperc_coeff":[0.0],
+    # config = {"gamma":[0.0],
     #           "alpha":[-5.0,-10.0,-20.0,-50.0],
     #           "group":["split_g2"]}
     # exps += bist.utils.get_exps(config,default)
-    config = {"iperc_coeff":[0.0,1.0,2.0,3.0,4.0,5.0,
+    config = {"gamma":[0.0,1.0,2.0,3.0,4.0,5.0,
                              6.0,7.0,8.0,9.0,10.0],
               "alpha":[math.log(0.5),0.,math.log(2.0)],
               "group":["split_g5"]}
@@ -46,19 +46,19 @@ def split_step_exps(default):
     return exps
 
 def split_step_for_rep_exps(default):
-    config = {"iperc_coeff":[0.0],
+    config = {"gamma":[0.0],
               "alpha":[-10.0,-20.0,-50.0],
               "group":["rsplit_g0"]}
     exps = bist.utils.get_exps(config,default)
-    config = {"iperc_coeff":[4.0],
+    config = {"gamma":[4.0],
               "alpha":[math.log(10.)],
               "group":["rsplit_g1"]}
     exps += bist.utils.get_exps(config,default)
-    config = {"iperc_coeff":[4.0],
+    config = {"gamma":[4.0],
               "alpha":[math.log(0.1)],
               "group":["rsplit_g2"]}
     exps += bist.utils.get_exps(config,default)
-    config = {"iperc_coeff":[8.0],
+    config = {"gamma":[8.0],
               "alpha":[math.log(0.5)],
               "group":["rsplit_g3"]}
     exps += bist.utils.get_exps(config,default)
@@ -66,8 +66,8 @@ def split_step_for_rep_exps(default):
     return exps
 
 def relabeling_exps(default):
-    config = {"thresh_new":[1.0e-1,5.0e-2,1e-2,1e-3],
-              "thresh_relabel":[1e-6,1e-5,1e-4],"group":["relabel"]}
+    config = {"epsilon_new":[1.0e-1,5.0e-2,1e-2,1e-3],
+              "epsilon_reid":[1e-6,1e-5,1e-4],"group":["relabel"]}
     exps = bist.utils.get_exps(config,default)
     return exps
 
@@ -127,8 +127,8 @@ def main():
     # -- global config --
     dname = "davis"
     default = {"sp_size":25,"potts":10.0,"sigma_app":0.009,
-               "alpha":math.log(0.5),"iperc_coeff":4.0,
-               "thresh_new":5e-2,"thresh_relabel":1e-6,
+               "alpha":math.log(0.5),"gamma":4.0,
+               "epsilon_new":5e-2,"epsilon_reid":1e-6,
                "video_mode":True,"flow":"default","group":"bist","nimgs":0}
 
     # -- save root --

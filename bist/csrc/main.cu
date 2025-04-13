@@ -47,13 +47,13 @@ int main(int argc, char **argv) {
     float sigma_app = 0.009f;
     float potts = 10.0;
     bool read_video = true;
-    float iperc_coeff = 4.0;
+    float gamma = 4.0;
     int input_niters = 0;
     int vid_niters = 0;
     bool prop_nc = true;
     bool prop_icov = true;
-    float thresh_relabel = 1e-6;
-    float thresh_new = 0.05;
+    float epsilon_reid = 1e-6;
+    float epsilon_new = 0.05;
     float merge_offset = 0.0;
     float split_alpha = 0.0;
     int target_nspix = 0;
@@ -90,11 +90,11 @@ int main(int argc, char **argv) {
             !parse_argument(i, argc, argv, arg, "--niters", input_niters) ||
             !parse_argument(i, argc, argv, arg, "--vid_niters", vid_niters) ||
             !parse_argument(i, argc, argv, arg, "--tgt_nspix", target_nspix) ||
-            !parse_argument(i,argc,argv,arg,"--thresh_relabel",thresh_relabel) ||
-            !parse_argument(i, argc, argv, arg, "--thresh_new", thresh_new) ||
+            !parse_argument(i,argc,argv,arg,"--epsilon_reid",epsilon_reid) ||
+            !parse_argument(i, argc, argv, arg, "--epsilon_new", epsilon_new) ||
             !parse_argument(i, argc, argv, arg, "--prop_nc", prop_nc) ||
             !parse_argument(i, argc, argv, arg, "--prop_icov", prop_icov) ||
-            !parse_argument(i, argc, argv, arg, "--iperc_coeff", iperc_coeff) ||
+            !parse_argument(i, argc, argv, arg, "--gamma", gamma) ||
             !parse_argument(i, argc, argv, arg, "--logging", logging) ||
             !parse_argument(i, argc, argv, arg, "--save_only_spix", save_only_spix) ||
             !parse_argument(i, argc, argv, arg, "--nimgs", nimgs)) {
@@ -272,9 +272,9 @@ int main(int argc, char **argv) {
                                   niters, niters_seg, sm_start,
                                   sp_size,sigma2_app,sigma2_size,
                                   potts,alpha,filled_spix,shifted_spix,params_prev,
-                                  thresh_relabel, thresh_new,
+                                  epsilon_reid, epsilon_new,
                                   merge_offset, split_alpha,
-                                  iperc_coeff, target_nspix, prop_icov,logger);
+                                  gamma, target_nspix, prop_icov,logger);
               spix = std::get<0>(out);
               border = std::get<1>(out);
               params = std::get<2>(out);

@@ -25,7 +25,7 @@ int run_split_p(const float* img, int* seg,
                 spix_helper_sm_v2* sm_helper,
                 int* sm_seg1 ,int* sm_seg2, int* sm_pairs,
                 float alpha_hastings, float split_alpha,
-                float iperc_coeff,
+                float gamma,
                 float sigma2_app, float sigma2_size,
                 int& count, int idx, int max_spix,
                 const int sp_size, const int npix,
@@ -40,7 +40,7 @@ int run_split_p(const float* img, int* seg,
 /*                          spix_helper_sm_v2* sm_helper, */
 /*                          int* sm_seg1 ,int* sm_seg2, int* sm_pairs, */
 /*                          float alpha_hastings, float split_alpha, */
-/*                          float iperc_coeff, float sigma2_app, */
+/*                          float gamma, float sigma2_app, */
 /*                          float sigma2_size, */
 /*                          int& count, int idx, int max_nspix, */
 /*                          const int sp_size, const int npix, */
@@ -114,7 +114,7 @@ void CudaCalcMergeCandidate_p(const float* img, int* seg,
 /*                              const int width, const int height, */
 /*                              const int nftrs, const int nspix_buffer, */
 /*                              int max_nspix, int direction,float alpha, */
-/*                              float split_alpha, float iperc_coeff, */
+/*                              float split_alpha, float gamma, */
 /*                              float sigma2_app, float sigma2_size, */
 /*                              Logger* logger); */
 
@@ -130,7 +130,7 @@ int CudaCalcSplitCandidate_p(const float* img, int* seg,
                              const int height, const int nftrs,
                              const int nspix_buffer, int max_spix,
                              int direction, float alpha,
-                             float split_alpha, float iperc_coeff,
+                             float split_alpha, float gamma,
                              float sigma2_app, float sigma2_size, Logger* logger);
 
 
@@ -215,7 +215,7 @@ void update_split_flag_p(int* sm_pairs,
                          spix_helper_sm_v2* sm_helper,
                          const int nspix_buffer,
                          float alpha_hasting_ratio,
-                         float split_alpha, float iperc_coeff,
+                         float split_alpha, float gamma,
                          int sp_size, int max_nspix, int* max_sp );
 
 

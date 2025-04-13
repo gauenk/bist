@@ -287,7 +287,7 @@ public:
                          spix_helper_sm_v2* sm_helper,
                          const int nspix_buffer, float alpha, float merge_alpha);
   // void log_relabel(uint64_t* comparisons, float* ss_comps, bool* is_living,
-  //                  int* relabel_id, float thresh_new, float thresh_replace, int nspix);
+  //                  int* relabel_id, float epsilon_new, float epsilon_reid, int nspix);
   void log_relabel(int* spix);
   template <typename T>
   void save_seq_frame(const std::string& directory, const thrust::device_vector<T>& img,
@@ -300,7 +300,6 @@ public:
 
 
 
-  
 
 #endif
 

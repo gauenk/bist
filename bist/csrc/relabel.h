@@ -21,7 +21,7 @@ void mark_for_relabel(bool* relabel,
                       float* ss_comps,
                       bool* is_living, int* max_spix,
                       int nspix, int nspix_prev,
-                      float thresh_replace, float thresh_new);
+                      float epsilon_reid, float epsilon_new);
 
 __global__
 void find_most_similar_spix(uint64_t* comparisons,
@@ -36,6 +36,6 @@ void find_most_similar_spix(uint64_t* comparisons,
 int relabel_spix(int* spix, spix_params* sp_params,
                  SuperpixelParams* params_prev,
                  thrust::device_vector<int>& living_ids,
-                 float thresh_replace, float thresh_new,
+                 float epsilon_reid, float epsilon_new,
                  int height, int width, int nspix_prev, int _max_spix,Logger* logger=nullptr);
 

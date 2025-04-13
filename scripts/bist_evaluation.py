@@ -61,7 +61,7 @@ def split_step_exps(results):
     bass_res = bass_res[['vname','tgt_nsp']]
     # results = results[results['group'].isin(split_groups)]
     results = results[results['group'].str.startswith("rsplit")]
-    results = results.rename(columns={"iperc_coeff":"gamma",
+    results = results.rename(columns={"gamma":"gamma",
                                       "split_alpha":"alpha_s"})
     if not('alpha_s' in results.columns): results['alpha_s'] = -1
     nrep = len(results['rep'].unique())
@@ -118,21 +118,21 @@ def split_step_exps(results):
 #     results = results.drop(columns=["vname","rep","flow"],axis=1)
 #     results_m = results.groupby(["group","id"]).mean().reset_index()
 #     results_s = (results.groupby(["group","id"]).std()/math.sqrt(N)).reset_index()
-#     results_s['iperc_coeff'] = results_m['iperc_coeff']
+#     results_s['gamma'] = results_m['gamma']
 #     results_s['alpha'] = results_m['alpha']
 #     results_s['nimgs'] = results_m['nimgs']
-#     results_m = results_m.sort_values(["iperc_coeff","alpha","nimgs"])
-#     results_s = results_s.sort_values(["iperc_coeff","alpha","nimgs"])
+#     results_m = results_m.sort_values(["gamma","alpha","nimgs"])
+#     results_s = results_s.sort_values(["gamma","alpha","nimgs"])
 
 #     # -- view results --
 #     terminal_width = shutil.get_terminal_size().columns
 #     print("\n"*2)
 #     print("Split [10] Step.".center(terminal_width))
 #     print("Averages:")
-#     view_table(results_m[['id','iperc_coeff','alpha','nimgs','ave_nsp','tex','szv']])
+#     view_table(results_m[['id','gamma','alpha','nimgs','ave_nsp','tex','szv']])
 #     view_table(results_m[['id','ue2d', 'ue3d', 'sa2d', 'sa3d', 'pooling']])
 #     print("Standard Error:")
-#     view_table(results_s[['id','iperc_coeff','alpha','nimgs','ave_nsp','tex','szv']])
+#     view_table(results_s[['id','gamma','alpha','nimgs','ave_nsp','tex','szv']])
 #     view_table(results_s[['id','ue2d', 'ue3d', 'sa2d', 'sa3d', 'pooling']])
 
 def relabeling_exps(results):
@@ -144,27 +144,27 @@ def relabeling_exps(results):
     results = results.drop(columns=["vname","rep","flow"],axis=1)
     results_m = results.groupby(["group","id"]).mean().reset_index()
     results_s = (results.groupby(["group","id"]).std()/math.sqrt(N)).reset_index()
-    results_s['thresh_new'] = results_m['thresh_new']
-    results_s['thresh_relabel'] = results_m['thresh_relabel']
-    results_m = results_m.sort_values(["thresh_new","thresh_relabel"])
-    results_s = results_s.sort_values(["thresh_new","thresh_relabel"])
-    results_m['thresh_relabel'] = 1e5*results_m['thresh_relabel']
+    results_s['epsilon_new'] = results_m['epsilon_new']
+    results_s['epsilon_reid'] = results_m['epsilon_reid']
+    results_m = results_m.sort_values(["epsilon_new","epsilon_reid"])
+    results_s = results_s.sort_values(["epsilon_new","epsilon_reid"])
+    results_m['epsilon_reid'] = 1e5*results_m['epsilon_reid']
 
     # -- view results --
     terminal_width = shutil.get_terminal_size().columns
     print("\n"*2)
     print("Relabeling.".center(terminal_width))
     print("Averages:")
-    view_table(results_m[['id','thresh_new','thresh_relabel','ave_nsp','tex','szv']])
+    view_table(results_m[['id','epsilon_new','epsilon_reid','ave_nsp','tex','szv']])
     view_table(results_m[['id','ue2d','ue3d','sa2d','sa3d','pooling']])
     print("Standard Error:")
-    view_table(results_s[['id','thresh_new','thresh_relabel','ave_nsp','tex','szv']])
+    view_table(results_s[['id','epsilon_new','epsilon_reid','ave_nsp','tex','szv']])
     view_table(results_s[['id','ue2d','ue3d','sa2d','sa3d','pooling']])
 
-    # for (group,gdf) in results_m.groupby("thresh_relabel"):
-    #     gdf = gdf.sort_values("thresh_new")
+    # for (group,gdf) in results_m.groupby("epsilon_reid"):
+    #     gdf = gdf.sort_values("epsilon_new")
     #     print("Threshold to Relabel a Current Spix as a Previous One: ",group)
-    #     view_table(gdf[['id','thresh_new','ave_nsp','tex','szv']])
+    #     view_table(gdf[['id','epsilon_new','ave_nsp','tex','szv']])
     #     view_table(gdf[['id','ue2d','ue3d','sa2d','sa3d','pooling']])
 
 def boundary_shape_exps(results):

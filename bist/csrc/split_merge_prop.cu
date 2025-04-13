@@ -34,7 +34,7 @@ int run_split_p(const float* img, int* seg,
                 spix_helper_sm_v2* sm_helper,
                 int* sm_seg1 ,int* sm_seg2, int* sm_pairs,
                 float alpha_hastings, float split_alpha,
-                float iperc_coeff,
+                float gamma,
                 float sigma2_app, float sigma2_size, 
                 int& count, int idx, int max_spix, 
                 const int sp_size, const int npix,
@@ -55,7 +55,7 @@ int run_split_p(const float* img, int* seg,
                                         sp_size,npix,nbatch,width,height,nftrs,
                                         nspix_buffer, max_spix,
                                         direction, alpha_hastings, split_alpha,
-                                        iperc_coeff, sigma2_app, sigma2_size, logger);
+                                        gamma, sigma2_app, sigma2_size, logger);
 
   // }
   return max_spix;
@@ -216,7 +216,7 @@ __host__ int CudaCalcSplitCandidate_p(const float* img, int* seg,
                                       const int height, const int nftrs,
                                       const int nspix_buffer, int max_spix,
                                       int direction, float alpha,
-                                      float split_alpha, float iperc_coeff,
+                                      float split_alpha, float gamma,
                                       float sigma2_app, float sigma2_size, Logger* logger){
 
     if (max_spix>nspix_buffer/2){ return max_spix; }
@@ -374,7 +374,7 @@ __host__ int CudaCalcSplitCandidate_p(const float* img, int* seg,
     update_split_flag_p<<<BlockPerGrid2,ThreadPerBlock>>>(sm_pairs, sp_params,
                                                           sm_helper,nspix_buffer,
                                                           alpha, split_alpha,
-                                                          iperc_coeff, sp_size,
+                                                          gamma, sp_size,
                                                           max_spix, max_sp);
 
     // -- do the split --
@@ -1238,7 +1238,7 @@ __global__ void calc_split_stats_step1_p(spix_params* sp_params,
 __global__
 void update_split_flag_p(int* sm_pairs, spix_params* sp_params,
                          spix_helper_sm_v2* sm_helper, const int nspix_buffer,
-                         float alpha, float split_alpha, float iperc_coeff,
+                         float alpha, float split_alpha, float gamma,
                          int sp_size, int max_spix, int* max_sp) {
   
 	// getting the index of the pixel
@@ -1301,7 +1301,7 @@ void update_split_flag_p(int* sm_pairs, spix_params* sp_params,
 
     // float hastings = log_nominator - log_denominator + split_alpha - 10*(1.0-iperc);
     // float hastings = log_nominator - log_denominator + split_alpha - 5*(1.0-iperc);
-    float hastings=log_nominator - log_denominator +split_alpha-iperc_coeff*(1.0-iperc_prop);
+    float hastings=log_nominator - log_denominator +split_alpha-gamma*(1.0-iperc_prop);
     // hastings = iperc*hastings + -10*(1.0-iperc);
     // sm_helper[k].hasting = log_nominator - log_denominator + split_alpha;
     // sm_helper[k].hasting = log_nominator - log_denominator + split_alpha - 2*(1.0-iperc);
