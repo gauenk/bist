@@ -256,7 +256,6 @@ __host__ int CudaCalcSplitCandidate_p(const float* img, int* seg,
     // gpuErrchk( cudaPeekAtLastError() );
     // gpuErrchk( cudaDeviceSynchronize() );
 
-
     init_sm_p<<<BlockPerGrid2,ThreadPerBlock>>>(img,seg,sp_params,
                                                 sm_helper, nspix_buffer,
                                                 nbatch, height, width,
@@ -491,6 +490,7 @@ void calc_merge_candidate_p(int* seg, bool* border, int* sm_pairs,
     bool prop_C = sp_params[C].prop;
     bool prop_W = (W>=0) ? sp_params[W].prop : false;
     // if (W>=0 && C!=W && (prop_C != prop_W)){
+    // printf("x,y,C,C.prop: %d,%d,%d,%d\n",x,y,C,prop_C ? 1 : 0);
     if (W>=0 && C!=W && not(prop_C and prop_W)){
       atomicMax(&sm_pairs[2*C+1],W);
     }

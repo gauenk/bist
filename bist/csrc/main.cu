@@ -50,6 +50,7 @@ int main(int argc, char **argv) {
     float gamma = 4.0;
     int input_niters = 0;
     int vid_niters = 0;
+    bool overlap_sm = true;
     bool prop_nc = true;
     bool prop_icov = true;
     float epsilon_reid = 1e-6;
@@ -60,6 +61,7 @@ int main(int argc, char **argv) {
     int logging = 0;
     int nimgs = 0;
     int save_only_spix = 0;
+    bool use_sm = true;
 
     /******************************
 
@@ -94,6 +96,7 @@ int main(int argc, char **argv) {
             !parse_argument(i, argc, argv, arg, "--epsilon_new", epsilon_new) ||
             !parse_argument(i, argc, argv, arg, "--prop_nc", prop_nc) ||
             !parse_argument(i, argc, argv, arg, "--prop_icov", prop_icov) ||
+            !parse_argument(i, argc, argv, arg, "--overlap", overlap_sm) ||
             !parse_argument(i, argc, argv, arg, "--gamma", gamma) ||
             !parse_argument(i, argc, argv, arg, "--logging", logging) ||
             !parse_argument(i, argc, argv, arg, "--save_only_spix", save_only_spix) ||
@@ -225,7 +228,7 @@ int main(int argc, char **argv) {
               auto out = run_bass(img_lab, nbatch, height, width, nftrs,
                                   niters, niters_seg, sm_start,
                                   sp_size, sigma2_app, sigma2_size,
-                                  potts,alpha,split_alpha,target_nspix,logger);
+                                  potts,alpha,split_alpha,target_nspix,use_sm,logger);
               spix = std::get<0>(out);
               border = std::get<1>(out);
               params = std::get<2>(out);
@@ -235,7 +238,8 @@ int main(int argc, char **argv) {
             }else{
 
               auto out_saf = shift_and_fill(spix_prev,params_prev,flow,
-                                            nbatch,height,width,prop_nc,logger);
+                                            nbatch,height,width,sp_size,
+                                            prop_nc,overlap_sm,logger);
               int* filled_spix = std::get<0>(out_saf);
               int* shifted_spix = std::get<1>(out_saf);
 

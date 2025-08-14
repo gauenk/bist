@@ -95,6 +95,7 @@ __host__ int run_bist_alg(float* img, int* seg, int* shifted,
     for (int idx = 0; idx < niters; idx++) {
 
       // -- Update Parameters --
+      // printf("[%d] update_params.\n",idx);
       update_params(img, seg, sp_params, sp_helper, sigma2_app,
                     npix, sp_size, nspix_buffer, nbatch, width, nftrs, prop_flag);
 
@@ -171,6 +172,7 @@ __host__ int run_bist_alg(float* img, int* seg, int* shifted,
 
 
       // -- Update Segmentation --
+      // printf("[%d] update_seg.\n",idx);
       update_seg(img, seg, border, sp_params,
                  niters_seg, sigma2_app, potts,
                  npix, nbatch, width, height, nftrs, logger);

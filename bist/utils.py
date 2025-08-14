@@ -288,8 +288,11 @@ def read_flo(filename, precision="32"):
 #
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-def read_cache(root,dname,vname,group,exp_id):
-    fname = root / ("%s_%s_%s_%s.csv" % (dname,vname,group,exp_id))
+def read_cache(root,dname,vname,group,exp_id,rep_id):
+    if rep_id == 0:
+        fname = root / ("%s_%s_%s_%s.csv" % (dname,vname,group,exp_id))
+    else:
+        fname = root / ("%s_%s_%s_%s_%d.csv" % (dname,vname,group,exp_id,rep_id))
     return _read_cache(fname)
 
 def _read_cache(fname):
@@ -301,8 +304,11 @@ def _read_cache(fname):
         except:
             return None
 
-def save_cache(results,root,dname,vname,group,exp_id):
-    fname = root / ("%s_%s_%s_%s.csv" % (dname,vname,group,exp_id))
+def save_cache(results,root,dname,vname,group,exp_id,rep_id):
+    if rep_id == 0:
+        fname = root / ("%s_%s_%s_%s.csv" % (dname,vname,group,exp_id))
+    else:
+        fname = root / ("%s_%s_%s_%s_%d.csv" % (dname,vname,group,exp_id,rep_id))
     _save_cache(results,fname)
     # if not root.exists(): root.mkdir(parents=True)
     # pd.DataFrame(results).to_csv(fname)
@@ -333,7 +339,7 @@ def extract_self(self,kwargs,defs):
         setattr(self,k,optional(kwargs,k,defs[k]))
 
 def extract(_cfg,defs):
-    return extract_defaults(_cfg,defs)
+    return extract_defaults_copy(_cfg,defs)
 
 def extract_defaults_copy(_cfg,defs):
     cfg = dict(dcopy(_cfg))

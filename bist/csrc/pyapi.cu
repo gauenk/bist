@@ -35,6 +35,10 @@
 #include "split_disconnected.h"
 #include "shift_labels.h"
 
+// -- multiscale --
+#include "smloop.h"
+
+
 // using namespace cv;
 using namespace std;
 
@@ -44,7 +48,7 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
                         float potts, float alpha, float gamma,
                         float epsilon_new, float epsilon_reid,
                         float split_alpha, int target_nspix,
-                        bool video_mode, bool rgb2lab_b){
+                        bool video_mode, bool use_sm, bool rgb2lab_b){
 
   // -- viz inputs --
   // printf("niters: %d, sp_size: %d, sigma_app: %.3f, potts: %.3f, alpha: %.3f, gamma: %.3f, epsilon_new: %.3f, epsilon_reid: %.3f, split_alpha: %.3f, target_nspix: %d, video_mode: %s\n",
@@ -126,13 +130,13 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
       auto out = run_bass(img_lab, nbatch, height, width, nftrs,
                           niters, niters_seg, sm_start,
                           sp_size,sigma2_app,sigma2_size,
-                          potts,alpha,split_alpha,target_nspix);
+                          potts,alpha,split_alpha,target_nspix,use_sm);
       spix = std::get<0>(out);
       border = std::get<1>(out);
       params = std::get<2>(out);
 
       // -- fill --
-      torch::Tensor _spix_th = torch::from_blob(spix, {height, width}, options_i32);
+      torch::Tensor _spix_th = torch::from_blob(spix, {height, width}, options_i32).clone();
       spix_th.index_put_({fidx}, _spix_th);
 
       // -- free data --
@@ -143,7 +147,7 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
 
       // -- shift & fill --
       auto out_saf = shift_and_fill(spix_prev,params_prev,flow,
-                                    nbatch,height,width,true);
+                                    nbatch,height,width,sp_size,true,true);
       int* filled_spix = std::get<0>(out_saf);
       int* shifted_spix = std::get<1>(out_saf);
 
@@ -170,7 +174,7 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
       params = std::get<2>(out);
 
       // -- fill --
-      torch::Tensor _spix_th = torch::from_blob(spix, {height, width}, options_i32);
+      torch::Tensor _spix_th = torch::from_blob(spix, {height, width}, options_i32).clone();
       spix_th.index_put_({fidx}, _spix_th);
 
       // -- free data --
@@ -211,7 +215,7 @@ bist_forward_cuda(const torch::Tensor vid, const torch::Tensor flows,
                   int niters, int sp_size, float potts,
                   float sigma_app, float alpha, float gamma,
                   float epsilon_new, float epsilon_reid, float split_alpha, 
-                  int target_nspix, bool video_mode, bool rgb2lab_b){
+                  int target_nspix, bool video_mode, bool use_sm, bool rgb2lab_b){
 
   // -- check --
   CHECK_INPUT(vid);
@@ -220,11 +224,99 @@ bist_forward_cuda(const torch::Tensor vid, const torch::Tensor flows,
   auto out = main_loop(vid, flows, niters,  sp_size,
                        sigma_app, potts, alpha,  gamma,
                        epsilon_new, epsilon_reid,
-                       split_alpha, target_nspix, video_mode, rgb2lab_b);
+                       split_alpha, target_nspix,
+                       video_mode, use_sm, rgb2lab_b);
 
   return out;
 }
 
+
+
+
+torch::Tensor smloop_loop(torch::Tensor img, torch::Tensor init_spix,
+                          int niters, int sp_size, float sigma_app,
+                          float potts, float alpha, float split_alpha, bool rgb2lab_b){
+
+
+  // -- unpack shape --
+  int nbatch = img.size(0);
+  int height = img.size(1);
+  int width = img.size(2);
+  int nftrs = img.size(3);
+  int npix = height*width;
+  assert(nftrs==3);
+  assert(init_spix.size(0)==nbatch);
+  assert(init_spix.size(1)==height);
+  assert(init_spix.size(2)==width);
+
+  // -- legacy --
+  int sm_start = 0;
+  float sigma2_size = 0.0;
+  float sigma2_app = sigma_app * sigma_app;
+  float gamma = 0.0;
+  float epsilon_new = 0.0;
+  float epsilon_reid = 0.0;
+  int target_nspix = 0;
+  bool video_mode = false;
+
+  // -- actually, not an input --
+  int niters_seg = 4;
+  float merge_alpha = 0.0;
+
+  // -- alloc options --
+  auto options_f32 = torch::TensorOptions().dtype(torch::kFloat32)
+    .layout(torch::kStrided).device(img.device());
+  auto options_i32 = torch::TensorOptions().dtype(torch::kInt32)
+    .layout(torch::kStrided).device(img.device());
+
+  // -- unpack pointers --
+  int init_nspix = init_spix.max().item<int>()+1;
+  int* init_spix_ptr = init_spix.data_ptr<int>();
+  float* img_rgb = img.data_ptr<float>();
+
+  // -- info --
+  printf("init_nspix: %d\n",init_nspix);
+  printf("niters: %d\n",niters);
+
+  // -- rgb -> lab --
+  float* img_lab = (float*)easy_allocate(npix*3,sizeof(float));
+  if (rgb2lab_b) {
+    rgb2lab(img_rgb,img_lab,nbatch,npix); // convert image to LAB
+  }else {
+    cudaMemcpy(img_lab,img_rgb,npix*3,cudaMemcpyDeviceToDevice);
+  }
+
+  // -- propogate --
+  int* spix = run_smloop(img_lab, init_spix_ptr, init_nspix,
+                         nbatch, height, width, nftrs,
+                         niters, sp_size,sigma2_app,
+                         potts, alpha, merge_alpha, split_alpha);
+
+  // -- fill --
+  torch::Tensor spix_th = torch::from_blob(spix, {nbatch, height, width}, options_i32);
+
+  // -- free data --
+  cudaFree(img_lab);
+
+  return spix_th;
+}
+
+
+// std::tuple<torch::Tensor,torch::Tensor>
+torch::Tensor
+bist_smloop_cuda(const torch::Tensor img, const torch::Tensor init_spix,
+                 int niters, int sp_size, float sigma_app, float potts,
+                 float alpha, float split_alpha, bool rgb2lab_b){
+
+  // -- check --
+  CHECK_INPUT(img);
+  CHECK_INPUT(init_spix);
+
+  auto spix = smloop_loop(img, init_spix, niters,  sp_size,
+                          sigma_app, potts, alpha, split_alpha, rgb2lab_b);
+
+  return spix;
+}
 
 
 
@@ -340,7 +432,7 @@ torch::Tensor run_shift_labels_py(torch::Tensor pix_labels, torch::Tensor spix,
 
   // -- shift --
   int* shifted_ptr = run_shift_labels(pix_labels_ptr, spix_ptr, flow_ptr, sizes_ptr,
-                                      nspix, nbatch, height, width);
+                                      nspix, nbatch, height, width, true);
 
   // -- copy to pytorch --
   auto options_i32 = torch::TensorOptions().dtype(torch::kInt32)
@@ -422,6 +514,7 @@ run_downpooling_py(torch::Tensor video, torch::Tensor spix){
 
 void init_bist(py::module &m){
   m.def("run_bist", &bist_forward_cuda,"BIST");
+  m.def("smloop",&bist_smloop_cuda,"Split-Merge Loop.");
   m.def("get_marked_video", &get_marked_video,"get marked video");
   m.def("shift_labels", &run_shift_labels_py,"run shifted labels");
   m.def("downpool",&run_downpooling_py,"downsampled pooling layer.");

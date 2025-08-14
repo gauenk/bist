@@ -31,6 +31,7 @@
 
 ***********************************************************/
 
+template <bool OVERLAP_SMALL>
 __global__
 void shift_labels_kernel(int* pix_labels, int* spix, float* flow, 
                          // unsigned long long* shifted_spix,
@@ -41,6 +42,7 @@ void shift_labels_kernel(int* pix_labels, int* spix, float* flow,
                          int height, int width){
 
   // -- get pixel index --
+  // bool OVERLAP_SMALL = true;
   int pix_idx = threadIdx.x + blockIdx.x*blockDim.x;
   int h_idx = pix_idx / width;
   int w_idx = pix_idx % width;
@@ -101,9 +103,14 @@ void shift_labels_kernel(int* pix_labels, int* spix, float* flow,
   // int prev_spix = atomicMax(shifted_ptr,spix_label);
 
   // spix_size = 10;
-  int prev_min = atomicMin(min_size_ptr,spix_size);
-  // printf("%d,%d\n",prev_min,*min_size_ptr);
-  assert(prev_min>=0);
+  int prev_val;
+  if (OVERLAP_SMALL){
+    prev_val = atomicMin(min_size_ptr,spix_size);
+  }else{
+    prev_val = atomicMax(min_size_ptr,spix_size);
+  }
+  // printf("%d,%d\n",prev_val,*min_size_ptr);
+  assert(prev_val>=0);
 
   // -- new way of setting so smallest survives --
   // assert(spix_label < 10000);
@@ -114,7 +121,11 @@ void shift_labels_kernel(int* pix_labels, int* spix, float* flow,
   // uint32_t spix_label_ = *reinterpret_cast<uint32_t*>(&spix_label);
   // atomic_min_update_int(shifted_ptr, spix_size_, spix_label_);
   uint32_t pix_label_ = *reinterpret_cast<uint32_t*>(&pix_label);
-  atomic_min_update_int(shifted_ptr, spix_size_, pix_label_);
+  if (OVERLAP_SMALL){
+    atomic_min_update_int(shifted_ptr, spix_size_, pix_label_);
+  }else{
+    atomic_max_update_int(shifted_ptr, spix_size_, pix_label_);
+  }
 
 }
 
@@ -182,7 +193,7 @@ void decode_kernel(int* shifted_spix, uint64_t* shifted_tmp,
 
 // std::tuple<int*,int*>
 int* run_shift_labels(int* pix_labels, int* spix, float* flow, int* sizes,
-                      int nspix, int nbatch, int height, int width){
+                      int nspix, int nbatch, int height, int width, bool overlap_sm){
 
 
     // -- allocate memory --
@@ -196,8 +207,10 @@ int* run_shift_labels(int* pix_labels, int* spix, float* flow, int* sizes,
 
     // -- init min sizes --
     // uint64_t* comparisons = (uint64_t*)easy_allocate(nspix,sizeof(uint64_t));
-    int init_min_size = 100000;
-    uint32_t init_32 = *reinterpret_cast<uint32_t*>(&init_min_size);
+    int init_size = overlap_sm ? 100000  : 0;
+    // if "min" set init to a big number
+    // if "max" set init to a small number
+    uint32_t init_32 = *reinterpret_cast<uint32_t*>(&init_size);
     size_t num_32bits = nbatch*npix*sizeof(uint64_t)/sizeof(uint32_t);
     cuMemsetD32((CUdeviceptr)shifted_tmp,init_32,num_32bits);
     num_32bits = nbatch*npix*sizeof(int)/sizeof(uint32_t);
@@ -219,10 +232,17 @@ int* run_shift_labels(int* pix_labels, int* spix, float* flow, int* sizes,
     // printf("nspix,npix: %d,%d\n",nspix,npix);
 
     // -- shift --
-    shift_labels_kernel<<<BlocksPixels,NumThreads>>>(pix_labels,spix,flow,
-                                                     shifted_tmp,counts,sizes,
-                                                     min_sizes,npix,
-                                                     nspix,nbatch,height,width);
+    if (overlap_sm){
+      shift_labels_kernel<true><<<BlocksPixels,NumThreads>>>(pix_labels,spix,flow,
+                                                             shifted_tmp,counts,sizes,
+                                                             min_sizes,npix,
+                                                             nspix,nbatch,height,width);
+    }else{
+      shift_labels_kernel<false><<<BlocksPixels,NumThreads>>>(pix_labels,spix,flow,
+                                                             shifted_tmp,counts,sizes,
+                                                             min_sizes,npix,
+                                                             nspix,nbatch,height,width);
+    }
     // gpuErrchk( cudaPeekAtLastError() );
     // gpuErrchk( cudaDeviceSynchronize() );
 

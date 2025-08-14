@@ -4,13 +4,14 @@
 
 #include "structs.h" // only for logger
 
-void
-run_fill_missing(int* spix, double* centers,
-                 int nbatch, int height, int width, int break_iter, Logger* logger=nullptr);
+void run_fill_missing(int* spix, double* centers,
+                      int nbatch, int height, int width, int break_iter,
+                      int sp_size, Logger* logger=nullptr);
 
 __host__
 void fill_missing(int* seg,  double* centers, bool* border,
-                  int nbatch,  int height, int width,int break_iter, Logger* logger=nullptr);
+                  int nbatch,  int height, int width,int break_iter,
+                  int sp_size, Logger* logger=nullptr);
 
 
 __global__

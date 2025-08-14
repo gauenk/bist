@@ -48,6 +48,7 @@ setup(
             "bist/csrc/logger.cu",
             "bist/csrc/bass.cu",
             "bist/csrc/bist.cu",
+            "bist/csrc/smloop.cu",
             # -- pybind --
             "bist/csrc/pybind.cpp",
         ],

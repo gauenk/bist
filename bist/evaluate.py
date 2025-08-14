@@ -7,8 +7,6 @@ from pathlib import Path
 from easydict import EasyDict as edict
 
 import torch as th
-import h5py
-from PIL import Image
 from einops import rearrange
 
 import bist

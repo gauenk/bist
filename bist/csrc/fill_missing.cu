@@ -17,6 +17,10 @@
 #include "init_utils.h"
 #include "fill_missing.h"
 
+// -- reset if needed --
+#include "init_seg.h"
+#include "compact_spix.h"
+
 // -- define --
 #define THREADS_PER_BLOCK 512
 
@@ -31,7 +35,8 @@
 
 __host__
 void fill_missing(int* seg,  double* centers, bool* border,
-                  int nbatch, int height, int width, int break_iter, Logger* logger){
+                  int nbatch, int height, int width, int break_iter,
+                  int sp_size, Logger* logger){
 
     // -- init launch info --
     int npix = height*width;
@@ -97,20 +102,26 @@ void fill_missing(int* seg,  double* centers, bool* border,
       // -- update previous --
       iter++;
       if ((iter>0) and (num_neg_cpu == prev_neg)){
-        auto msg = "An error of some type, the border won't shrink: %d\n";
-        fprintf(stdout,msg,num_neg_cpu);
-        // cv::String fname = "_fill_missing.csv";
-        // save_spix_gpu(fname, seg, height, width);
-        update_missing_seg_nn<<<BlockPerGrid,ThreadPerBlock>>>(         \
-          seg, centers, border, nbatch, height, width, npix, 0, 0, true);
-        update_missing_seg_nn<<<BlockPerGrid,ThreadPerBlock>>>(         \
-          seg, centers, border, nbatch, height, width, npix, 0, 1, true);
-        update_missing_seg_nn<<<BlockPerGrid,ThreadPerBlock>>>(         \
-          seg, centers, border, nbatch, height, width, npix, 1, 0, true);
-        update_missing_seg_nn<<<BlockPerGrid,ThreadPerBlock>>>(         \
-          seg, centers, border, nbatch, height, width, npix, 1, 1, true);
-        break;
-        exit(1);
+        if (num_neg_cpu == npix){
+          int _nspix = init_seg(seg, sp_size, width, height, nbatch);
+          get_compact_spix(seg, npix);
+          num_neg_cpu = 0;
+        }else{
+          auto msg = "An error of some type, the border won't shrink: %d\n";
+          fprintf(stdout,msg,num_neg_cpu);
+          // cv::String fname = "_fill_missing.csv";
+          // save_spix_gpu(fname, seg, height, width);
+          update_missing_seg_nn<<<BlockPerGrid,ThreadPerBlock>>>(         \
+            seg, centers, border, nbatch, height, width, npix, 0, 0, true);
+          update_missing_seg_nn<<<BlockPerGrid,ThreadPerBlock>>>(         \
+            seg, centers, border, nbatch, height, width, npix, 0, 1, true);
+          update_missing_seg_nn<<<BlockPerGrid,ThreadPerBlock>>>(         \
+            seg, centers, border, nbatch, height, width, npix, 1, 0, true);
+          update_missing_seg_nn<<<BlockPerGrid,ThreadPerBlock>>>(         \
+            seg, centers, border, nbatch, height, width, npix, 1, 1, true);
+          break;
+          exit(1);
+        }
       }
       prev_neg = num_neg_cpu;
 
@@ -123,12 +134,12 @@ void fill_missing(int* seg,  double* centers, bool* border,
       (seg, border, nbatch, height, width, num_neg_gpu);
     cudaMemcpy(&num_neg_cpu,num_neg_gpu,sizeof(int),cudaMemcpyDeviceToHost);
     if (num_neg_cpu > 0){
-      fprintf(stdout,"negative spix exist.\n");
+      fprintf(stdout,"negative spix exist: %d,%d,%d\n",num_neg_cpu,iter,break_iter);
     }
 
     // -- free memory --
     cudaFree(num_neg_gpu);
-    // return init_num_neg; // number that was negative!
+    // return init_num_neg; // number that was negative
 }
 
 
@@ -155,136 +166,136 @@ float3 isotropic_space(float3 res, int label, int x, int y,
 }
 
 
-__global__
-void simple_update(int* seg, double* centers, bool* border,
-                           const int nbatch, const int height, const int width,
-                           const int npix, const int xmod3, const int ymod3){   
+// __global__
+// void simple_update(int* seg, double* centers, bool* border,
+//                            const int nbatch, const int height, const int width,
+//                            const int npix, const int xmod3, const int ymod3){   
 
-    // -- init --
-    int label_check;
-    int idx = threadIdx.x + blockIdx.x*blockDim.x;
-    int seg_idx = idx; 
-    if (seg_idx>=npix)  return;
-    int x = seg_idx % width;  
-    if (x % 2 != xmod3) return;
-    int y = seg_idx / width;   
-    if (y % 2 != ymod3) return;
-    if (border[seg_idx]==0) return;
+//     // -- init --
+//     int label_check;
+//     int idx = threadIdx.x + blockIdx.x*blockDim.x;
+//     int seg_idx = idx; 
+//     if (seg_idx>=npix)  return;
+//     int x = seg_idx % width;  
+//     if (x % 2 != xmod3) return;
+//     int y = seg_idx / width;   
+//     if (y % 2 != ymod3) return;
+//     if (border[seg_idx]==0) return;
 
-    // -- init neighbors --
-    bool nbrs[9];
-    bool isNvalid = 0;
-    bool isSvalid = 0;
-    bool isEvalid = 0;
-    bool isWvalid = 0; 
+//     // -- init neighbors --
+//     bool nbrs[9];
+//     bool isNvalid = 0;
+//     bool isSvalid = 0;
+//     bool isEvalid = 0;
+//     bool isWvalid = 0; 
 
-    // -- init for now --
-    int count_diff_nbrs_N=0;
-    int count_diff_nbrs_S=0;
-    int count_diff_nbrs_E=0;
-    int count_diff_nbrs_W=0;
+//     // -- init for now --
+//     int count_diff_nbrs_N=0;
+//     int count_diff_nbrs_S=0;
+//     int count_diff_nbrs_E=0;
+//     int count_diff_nbrs_W=0;
 
-    // -- init --
-    float3 res_max;
-    res_max.x = -999999;
-    res_max.y = -1;
+//     // -- init --
+//     float3 res_max;
+//     res_max.x = -999999;
+//     res_max.y = -1;
 
-    // --> north, south, east, west <--
-    int N = -1, S = -1, E = -1, W = -1;
-    if (x>0){ W = __ldg(&seg[idx-1]); } // left
-    if (y>0){ N = __ldg(&seg[idx-width]); }// top
-    if (x<(width-1)){ E = __ldg(&seg[idx+1]); } // right
-    if (y<(height-1)){ S = __ldg(&seg[idx+width]); } // below
+//     // --> north, south, east, west <--
+//     int N = -1, S = -1, E = -1, W = -1;
+//     if (x>0){ W = __ldg(&seg[idx-1]); } // left
+//     if (y>0){ N = __ldg(&seg[idx-width]); }// top
+//     if (x<(width-1)){ E = __ldg(&seg[idx+1]); } // right
+//     if (y<(height-1)){ S = __ldg(&seg[idx+width]); } // below
 
-    // --> diags [north (east, west), south (east, west)] <--
-    // int NE = -1, NW = -1, SE = -1, SW = -1;
+//     // --> diags [north (east, west), south (east, west)] <--
+//     // int NE = -1, NW = -1, SE = -1, SW = -1;
 
-    // // -- read labels of neighbors --
-    // if ((y>0) and (x<(width-1))){ NE = __ldg(&seg[idx-width+1]); } // top-right
-    // if ((y>0) and (x>0)){  NW = __ldg(&seg[idx-width-1]); } // top-left
-    // if ((x<(width-1)) and (y<(height-1))){SE = __ldg(&seg[idx+width+1]); } // btm-right
-    // if ((x>0) and (y<(height-1))){ SW = __ldg(&seg[idx+width-1]); } // btm-left
+//     // // -- read labels of neighbors --
+//     // if ((y>0) and (x<(width-1))){ NE = __ldg(&seg[idx-width+1]); } // top-right
+//     // if ((y>0) and (x>0)){  NW = __ldg(&seg[idx-width-1]); } // top-left
+//     // if ((x<(width-1)) and (y<(height-1))){SE = __ldg(&seg[idx+width+1]); } // btm-right
+//     // if ((x>0) and (y<(height-1))){ SW = __ldg(&seg[idx+width-1]); } // btm-left
 
-    // -- read neighor labels for potts term --
-    // check 8 nbrs and save result if valid to change to the last place of array
-    // return how many nbrs different for potts term calculation
-    int min_neigh = -1;
-    int min_count = 1000;
-    bool update_min = false;
+//     // -- read neighor labels for potts term --
+//     // check 8 nbrs and save result if valid to change to the last place of array
+//     // return how many nbrs different for potts term calculation
+//     int min_neigh = -1;
+//     int min_count = 1000;
+//     bool update_min = false;
 
-    //N :
-    set_nbrs_v1(-1, N, -1, W, E, -1, S, -1, N, nbrs);
-    count_diff_nbrs_N = ischangbale_by_nbrs(nbrs);
-    // isNvalid = nbrs[8] or (res_max.y == -1);
-    // if(!isNvalid) return;
+//     //N :
+//     set_nbrs_v1(-1, N, -1, W, E, -1, S, -1, N, nbrs);
+//     count_diff_nbrs_N = ischangbale_by_nbrs(nbrs);
+//     // isNvalid = nbrs[8] or (res_max.y == -1);
+//     // if(!isNvalid) return;
     
-    //E:
-    set_nbrs_v1(-1, N, -1, W, E, -1, S, -1, E, nbrs);
-    count_diff_nbrs_E = ischangbale_by_nbrs(nbrs);
-    // isEvalid = nbrs[8] or (res_max.y == -1);
-    // if(!isEvalid) return;
+//     //E:
+//     set_nbrs_v1(-1, N, -1, W, E, -1, S, -1, E, nbrs);
+//     count_diff_nbrs_E = ischangbale_by_nbrs(nbrs);
+//     // isEvalid = nbrs[8] or (res_max.y == -1);
+//     // if(!isEvalid) return;
 
-    //S :
-    set_nbrs(-1, N, -1, W, E, -1, S, -1, S, nbrs);
-    count_diff_nbrs_S = ischangbale_by_nbrs(nbrs);
-    // isSvalid = nbrs[8] or (res_max.y == -1);
-    // if(!isSvalid) return;
+//     //S :
+//     set_nbrs(-1, N, -1, W, E, -1, S, -1, S, nbrs);
+//     count_diff_nbrs_S = ischangbale_by_nbrs(nbrs);
+//     // isSvalid = nbrs[8] or (res_max.y == -1);
+//     // if(!isSvalid) return;
 
-    //W :
-    set_nbrs(-1, N, -1, W, E, -1, S, -1, W, nbrs);
-    count_diff_nbrs_W = ischangbale_by_nbrs(nbrs);
-    // isWvalid = nbrs[8] or (res_max.y == -1);
-    // if(!isWvalid) return;
+//     //W :
+//     set_nbrs(-1, N, -1, W, E, -1, S, -1, W, nbrs);
+//     count_diff_nbrs_W = ischangbale_by_nbrs(nbrs);
+//     // isWvalid = nbrs[8] or (res_max.y == -1);
+//     // if(!isWvalid) return;
 
-    // -- compute posterior --
-    bool valid = N >= 0;
-    label_check = N;
-    if (valid){
-      res_max = isotropic_space(res_max, label_check, x, y,
-                                centers+label_check*2, height, width, 0);
-      update_min = count_diff_nbrs_N < min_count;
-      min_count = update_min ? count_diff_nbrs_N : min_count;
-      min_neigh = update_min ? N : min_neigh;
-    }
+//     // -- compute posterior --
+//     bool valid = N >= 0;
+//     label_check = N;
+//     if (valid){
+//       res_max = isotropic_space(res_max, label_check, x, y,
+//                                 centers+label_check*2, height, width, 0);
+//       update_min = count_diff_nbrs_N < min_count;
+//       min_count = update_min ? count_diff_nbrs_N : min_count;
+//       min_neigh = update_min ? N : min_neigh;
+//     }
 
-    valid = S>=0;
-    label_check = S;
-    if(valid && (label_check!=N)){
-      res_max = isotropic_space(res_max, label_check, x, y,
-                                centers+label_check*2, height, width, 1);
-      update_min = count_diff_nbrs_S < min_count;
-      min_count = update_min ? count_diff_nbrs_S : min_count;
-      min_neigh = update_min ? S : min_neigh;
-    }
+//     valid = S>=0;
+//     label_check = S;
+//     if(valid && (label_check!=N)){
+//       res_max = isotropic_space(res_max, label_check, x, y,
+//                                 centers+label_check*2, height, width, 1);
+//       update_min = count_diff_nbrs_S < min_count;
+//       min_count = update_min ? count_diff_nbrs_S : min_count;
+//       min_neigh = update_min ? S : min_neigh;
+//     }
 
-    valid = W >= 0;
-    label_check = W;
-    if(valid && (label_check!=S)&&(label_check!=N)) {
-      res_max = isotropic_space(res_max, label_check, x, y,
-                                centers+label_check*2, height, width, 2);
-      update_min = count_diff_nbrs_W < min_count;
-      min_count = update_min ? count_diff_nbrs_W : min_count;
-      min_neigh = update_min ? W : min_neigh;
-    }
+//     valid = W >= 0;
+//     label_check = W;
+//     if(valid && (label_check!=S)&&(label_check!=N)) {
+//       res_max = isotropic_space(res_max, label_check, x, y,
+//                                 centers+label_check*2, height, width, 2);
+//       update_min = count_diff_nbrs_W < min_count;
+//       min_count = update_min ? count_diff_nbrs_W : min_count;
+//       min_neigh = update_min ? W : min_neigh;
+//     }
     
-    valid = E >= 0;
-    label_check = E;
-    if(valid && (label_check!=W)&&(label_check!=S)&&(label_check!=N)){
-      res_max = isotropic_space(res_max, label_check, x, y,
-                                centers+label_check*2, height,width, 3);
-      update_min = count_diff_nbrs_E < min_count;
-      min_count = update_min ? count_diff_nbrs_E : min_count;
-      min_neigh = update_min ? E : min_neigh;
-    }
+//     valid = E >= 0;
+//     label_check = E;
+//     if(valid && (label_check!=W)&&(label_check!=S)&&(label_check!=N)){
+//       res_max = isotropic_space(res_max, label_check, x, y,
+//                                 centers+label_check*2, height,width, 3);
+//       update_min = count_diff_nbrs_E < min_count;
+//       min_count = update_min ? count_diff_nbrs_E : min_count;
+//       min_neigh = update_min ? E : min_neigh;
+//     }
 
-    // --> if we do not setting the border for a mysterious reason <--
-    //   then set it to the neighbor with the number of the same neighbors
-    seg[seg_idx] = res_max.y;
-    // if (res_max.y == -1){
-    //   res_max.y = min_neigh;
-    // }
-    return;
-}
+//     // --> if we do not setting the border for a mysterious reason <--
+//     //   then set it to the neighbor with the number of the same neighbors
+//     if (res_max.y == -1){
+//       res_max.y = min_neigh;
+//     }
+//     seg[seg_idx] = res_max.y;
+//     return;
+// }
 
 __global__
 void update_missing_seg_nn(int* seg, double* centers, bool* border,
@@ -295,14 +306,14 @@ void update_missing_seg_nn(int* seg, double* centers, bool* border,
     // -- init --
     int label_check;
     int idx = threadIdx.x + blockIdx.x*blockDim.x;
-    int seg_idx = idx; 
-    if (seg_idx>=npix)  return;
-    int x = seg_idx % width;  
+    int pix_idx = idx; 
+    if (pix_idx>=npix)  return;
+    int x = pix_idx % width;  
     if (x % 2 != xmod3) return;
-    int y = seg_idx / width;   
+    int y = pix_idx / width;   
     if (y % 2 != ymod3) return;
-    if (border[seg_idx]==0) return;
-    if (seg[seg_idx]!=-1) return;
+    if (border[pix_idx]==0) return;
+    if (seg[pix_idx]!=-1) return;
 
     // -- init neighbors --
     bool nbrs[9];
@@ -434,10 +445,10 @@ void update_missing_seg_nn(int* seg, double* centers, bool* border,
 
     // --> if we do not setting the border for a mysterious reason <--
     //   then set it to the neighbor with the number of the same neighbors
-    seg[seg_idx] = res_max.y;
-    // if (res_max.y == -1){
-    //   res_max.y = min_neigh;
-    // }
+    if (res_max.y == -1){
+      res_max.y = min_neigh;
+    }
+    seg[pix_idx] = res_max.y;
     return;
 }
 
@@ -655,7 +666,8 @@ void find_border_along_missing(const int* seg, bool* border,
 ***********************************************************/
 
 void run_fill_missing(int* spix, double* centers,
-                      int nbatch, int height, int width, int break_iter, Logger* logger){
+                      int nbatch, int height, int width,
+                      int break_iter, int sp_size, Logger* logger){
 
 
     // -- allocate border --
@@ -663,7 +675,7 @@ void run_fill_missing(int* spix, double* centers,
     bool* border = (bool*)easy_allocate(nbatch*npix,sizeof(bool));
 
     // -- run fill --
-    fill_missing(spix, centers, border, nbatch, height, width, break_iter, logger);
+    fill_missing(spix, centers, border, nbatch, height, width, break_iter, sp_size, logger);
     cudaFree(border);
 
     return;
