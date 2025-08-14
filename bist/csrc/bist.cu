@@ -173,7 +173,7 @@ __host__ int run_bist_alg(float* img, int* seg, int* shifted,
       // -- Update Segmentation --
       update_seg(img, seg, border, sp_params,
                  niters_seg, sigma2_app, potts,
-                 npix, nbatch, width, height, nftrs, logger);
+                 npix, nspix_buffer, nbatch, width, height, nftrs, logger);
       
       // gpuErrchk( cudaPeekAtLastError() );
       // gpuErrchk( cudaDeviceSynchronize() );

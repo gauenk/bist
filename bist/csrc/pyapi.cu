@@ -43,8 +43,8 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
                         int niters, int sp_size, float sigma_app,
                         float potts, float alpha, float gamma,
                         float epsilon_new, float epsilon_reid,
-                        float split_alpha, int target_nspix,
-                        bool video_mode, bool rgb2lab_b){
+                        float split_alpha, int sm_start,
+			int target_nspix, bool video_mode, bool rgb2lab_b){
 
   // -- viz inputs --
   // printf("niters: %d, sp_size: %d, sigma_app: %.3f, potts: %.3f, alpha: %.3f, gamma: %.3f, epsilon_new: %.3f, epsilon_reid: %.3f, split_alpha: %.3f, target_nspix: %d, video_mode: %s\n",
@@ -59,7 +59,7 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
   int nbatch = 1;
 
   // -- legacy --
-  int sm_start = 0;
+  // int sm_start = 0;
   float sigma2_size = 0.0;
   float sigma2_app = sigma_app * sigma_app;
 
@@ -196,6 +196,8 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
       params_prev = params;
     }
 
+    cudaDeviceSynchronize();
+
   }
   cudaFree(img_lab);
 
@@ -211,7 +213,8 @@ bist_forward_cuda(const torch::Tensor vid, const torch::Tensor flows,
                   int niters, int sp_size, float potts,
                   float sigma_app, float alpha, float gamma,
                   float epsilon_new, float epsilon_reid, float split_alpha, 
-                  int target_nspix, bool video_mode, bool rgb2lab_b){
+                  int sm_start, int target_nspix,
+		  bool video_mode, bool rgb2lab_b){
 
   // -- check --
   CHECK_INPUT(vid);
@@ -220,9 +223,96 @@ bist_forward_cuda(const torch::Tensor vid, const torch::Tensor flows,
   auto out = main_loop(vid, flows, niters,  sp_size,
                        sigma_app, potts, alpha,  gamma,
                        epsilon_new, epsilon_reid,
-                       split_alpha, target_nspix, video_mode, rgb2lab_b);
+                       split_alpha, sm_start,
+		       target_nspix, video_mode, rgb2lab_b);
 
   return out;
+}
+
+
+
+// a batched version of bass without split-merges --
+torch::Tensor
+batched_bass_cuda(const torch::Tensor vid,
+                  int niters, int sp_size, float potts,
+                  float sigma_app, bool rgb2lab_b){
+
+  // -- check --
+  CHECK_INPUT(vid);
+
+  // -- unpack shape --
+  int nbatch = vid.size(0);
+  int height = vid.size(1);
+  int width = vid.size(2);
+  int nftrs = vid.size(3);
+  int npix = height*width;
+  int target_nspix = -1;
+
+  // -- silly defaults; unused since no split/merge --
+   float alpha = 1.0;
+   float gamma = 1.0;
+   float epsilon_new = 1.0;
+   float epsilon_reid = 1.0;
+   float split_alpha = 1.0;
+
+  // -- legacy --
+  int sm_start = 1000000; // no split/merge for now
+  float sigma2_size = 0.0;
+  float sigma2_app = sigma_app * sigma_app;
+
+  // -- actually, not an input --
+  int niters_seg = 4;
+  // float split_alpha = 0.0;
+  float merge_alpha = 0.0;
+
+  // -- alloc options --
+  auto options_f32 = torch::TensorOptions().dtype(torch::kFloat32)
+    .layout(torch::kStrided).device(vid.device());
+  auto options_i32 = torch::TensorOptions().dtype(torch::kInt32)
+    .layout(torch::kStrided).device(vid.device());
+
+  // -- allocate spix --
+  // torch::Tensor spix_th = torch::zeros({nbatch, height, width}, options_i32);
+
+  // -- init --
+  float* img_rgb = vid.data_ptr<float>();
+  float* img_lab = nullptr;
+
+  if (rgb2lab_b) {
+      img_lab = (float*)easy_allocate(nbatch*npix*3,sizeof(float));
+      rgb2lab(img_rgb,img_lab,nbatch,npix); // convert image to LAB
+  }else {
+      img_lab = img_rgb;
+      // cudaMemcpy(img_lab,img_rgb,npix*3,cudaMemcpyDeviceToDevice);
+  }
+
+
+   // -- single image --
+   // std::tuple<int*,bool*,SuperpixelParams*>
+   // run_batched_bass(float* img, int nbatch, int height, int width, int nftrs,
+   // 		 int niters, int niters_seg, int sm_start, int sp_size,
+   // 		 float sigma2_app, float sigma2_size, float potts,
+   // 		 float alpha_hastings, float split_alpha, int target_nspix,Logger* logger);
+   auto out = run_batched_bass(img_lab, nbatch, height, width, nftrs,
+                       niters, niters_seg, sm_start,
+                       sp_size,sigma2_app,sigma2_size,
+                       potts,alpha,split_alpha,target_nspix);
+   int* spix = std::get<0>(out);
+   bool* border = std::get<1>(out);
+   SuperpixelParams* params = std::get<2>(out);
+
+   // -- fill --
+   torch::Tensor spix_th = torch::from_blob(spix, {nbatch, height, width}, options_i32);
+
+   // -- free data --
+   cudaFree(border);
+   cudaFree(params);
+
+  if (rgb2lab_b) {
+   cudaFree(img_lab);
+  }
+
+   return spix_th;
 }
 
 
@@ -425,6 +515,7 @@ void init_bist(py::module &m){
   m.def("get_marked_video", &get_marked_video,"get marked video");
   m.def("shift_labels", &run_shift_labels_py,"run shifted labels");
   m.def("downpool",&run_downpooling_py,"downsampled pooling layer.");
+  m.def("batched_bass",&batched_bass_cuda,"batched bass without split/merge");
   // m.def("bass_forward", &bass_forward_cuda,
   //       "BASS");
 }

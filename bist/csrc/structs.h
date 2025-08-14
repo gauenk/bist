@@ -207,22 +207,59 @@ struct alignas(16) spix_helper_sm_v2 {
 };
 
 
-// -- basic --
+// // -- basic --
+// template <typename T>
+// bool parse_argument(int &i, int argc, char **argv, const std::string &arg,
+//                     const std::string &option, T &value) {
+//     if (arg == option) {
+//         if (i + 1 < argc) {
+//             ++i;
+//             if constexpr (std::is_same<T, int>::value) {
+//                 value = std::stoi(argv[i]);
+//             } else if constexpr (std::is_same<T, float>::value) {
+//                 value = std::stof(argv[i]);
+//             } else if constexpr (std::is_same<T, bool>::value) {
+//                 value = std::stoi(argv[i]) == 1;
+//             } else if constexpr (std::is_same<T, const char *>::value || std::is_same<T, std::string>::value) {
+//                 value = argv[i];
+//             }
+//         } else {
+//             std::cerr << option << " option requires an argument." << std::endl;
+//             return false;
+//         }
+//     }
+//     return true;
+// }
+
+// Helper functions for different types
+inline void set_argument_value(int &value, char* arg) {
+    value = std::stoi(arg);
+}
+
+inline void set_argument_value(float &value, char* arg) {
+    value = std::stof(arg);
+}
+
+inline void set_argument_value(bool &value, char* arg) {
+    value = std::stoi(arg) == 1;
+}
+
+inline void set_argument_value(std::string &value, char* arg) {
+    value = arg;
+}
+
+inline void set_argument_value(const char* &value, char* arg) {
+    value = arg;
+}
+
+// C++14 compatible template function
 template <typename T>
 bool parse_argument(int &i, int argc, char **argv, const std::string &arg,
                     const std::string &option, T &value) {
     if (arg == option) {
         if (i + 1 < argc) {
             ++i;
-            if constexpr (std::is_same<T, int>::value) {
-                value = std::stoi(argv[i]);
-            } else if constexpr (std::is_same<T, float>::value) {
-                value = std::stof(argv[i]);
-            } else if constexpr (std::is_same<T, bool>::value) {
-                value = std::stoi(argv[i]) == 1;
-            } else if constexpr (std::is_same<T, const char *>::value || std::is_same<T, std::string>::value) {
-                value = argv[i];
-            }
+            set_argument_value(value, argv[i]);
         } else {
             std::cerr << option << " option requires an argument." << std::endl;
             return false;

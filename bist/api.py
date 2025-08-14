@@ -22,7 +22,8 @@ def run(vid,flows,**kwargs):
     defaults = default_params()
     kwargs = extract(kwargs,defaults)
     sp_size = kwargs['sp_size']
-    niters = sp_size
+    niters = kwargs['niters']
+    if niters < 0: niters = sp_size
     potts = kwargs['potts']
     sigma_app = kwargs['sigma_app']
     alpha = kwargs['alpha']
@@ -33,6 +34,9 @@ def run(vid,flows,**kwargs):
     target_nspix = kwargs['target_nspix']
     video_mode = kwargs['video_mode']
     rgb2lab = kwargs['rgb2lab']
+    sm_start = kwargs['sm_start']
+    use_sm = kwargs['use_sm']
+    if use_sm is False: sm_start = 10*8
 
     # -- prep --
     assert vid.shape[-1] == 3,"Last Dimension Must be 3 Color Channels or 3 Features"
@@ -41,7 +45,7 @@ def run(vid,flows,**kwargs):
     fxn = bin.bist_cuda.run_bist
     spix = fxn(vid,flows,niters,sp_size,potts,sigma_app,alpha,
                gamma,epsilon_new,epsilon_reid,
-               split_alpha,target_nspix,video_mode,rgb2lab)
+               split_alpha,sm_start,target_nspix,video_mode,rgb2lab)
     return spix
 
 def run_bin(vid_root,flow_root,spix_root,img_ext,**kwargs):
@@ -84,13 +88,14 @@ def run_bin(vid_root,flow_root,spix_root,img_ext,**kwargs):
     return output
 
 def default_params():
-    defaults = {"sp_size":25,"potts":10.0,"sigma_app":0.009,
+    defaults = {"sp_size":25,"niters":-1,"potts":10.0,"sigma_app":0.009,
                 "alpha":math.log(0.5),"gamma":4.0,
                 "epsilon_new":5e-2,"epsilon_reid":1e-6,
                 "prop_nc":1,"prop_icov":1,"split_alpha":0.0,
                 "logging":0,"target_nspix":0,"nimgs":0,
                 "video_mode":True,"rgb2lab":True,
-                "save_only_spix":True,"verbose":False}
+                "save_only_spix":True,"verbose":False,
+                "batch_mode":False,"use_sm":True,"sm_start":0}
     return defaults
 
 def get_marked_video(vid,spix,color):

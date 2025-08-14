@@ -60,6 +60,7 @@ int main(int argc, char **argv) {
     int logging = 0;
     int nimgs = 0;
     int save_only_spix = 0;
+    int _batch_mode = 0;
 
     /******************************
 
@@ -97,7 +98,8 @@ int main(int argc, char **argv) {
             !parse_argument(i, argc, argv, arg, "--gamma", gamma) ||
             !parse_argument(i, argc, argv, arg, "--logging", logging) ||
             !parse_argument(i, argc, argv, arg, "--save_only_spix", save_only_spix) ||
-            !parse_argument(i, argc, argv, arg, "--nimgs", nimgs)) {
+            !parse_argument(i, argc, argv, arg, "--nimgs", nimgs) ||
+            !parse_argument(i, argc, argv, arg, "--batch_mode", _batch_mode)) {
             return 1;
         }
 
@@ -121,6 +123,7 @@ int main(int argc, char **argv) {
     // -- control the number of spix --
     int nbatch = 1;
     int nftrs = 3;
+    bool batch_mode = (_batch_mode == 1);
     bool controlled_nspix = (target_nspix > 0);
     int niters = (input_niters == 0) ? sp_size : input_niters;
     int niters_seg = 4;
@@ -222,13 +225,26 @@ int main(int argc, char **argv) {
 
             if ((count == 0)||(read_video == false)){
               // sm_start = 3;
-              auto out = run_bass(img_lab, nbatch, height, width, nftrs,
-                                  niters, niters_seg, sm_start,
-                                  sp_size, sigma2_app, sigma2_size,
-                                  potts,alpha,split_alpha,target_nspix,logger);
-              spix = std::get<0>(out);
-              border = std::get<1>(out);
-              params = std::get<2>(out);
+
+              if (batch_mode){
+                auto out = run_batched_bass(img_lab, nbatch, height, width, nftrs,
+                    niters, niters_seg, sm_start,
+                    sp_size, sigma2_app, sigma2_size,
+                    potts,alpha,split_alpha,target_nspix,logger);
+                spix = std::get<0>(out);
+                border = std::get<1>(out);
+                params = std::get<2>(out);
+
+              }else{
+                auto out = run_bass(img_lab, nbatch, height, width, nftrs,
+                    niters, niters_seg, sm_start,
+                    sp_size, sigma2_app, sigma2_size,
+                    potts,alpha,split_alpha,target_nspix,logger);
+                spix = std::get<0>(out);
+                border = std::get<1>(out);
+                params = std::get<2>(out);
+              }
+
 
               // int nspix = params->ids.size();
               // run_invalidate_disconnected(spix, 1, height, width, nspix)
@@ -407,11 +423,16 @@ int main(int argc, char **argv) {
             // -- handle memory for previous info --
             if (count>0){
               cudaFree(spix_prev);
-              delete params_prev;
+              if (params_prev != nullptr){
+                delete params_prev;
+              } 
             }
+
             if (count == img_files.size()){
               cudaFree(spix);
-              delete params;
+              if (params != nullptr){
+                delete params;
+              } 
             }else{
               spix_prev = spix;
               params_prev = params;

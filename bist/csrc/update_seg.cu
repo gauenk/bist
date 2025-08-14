@@ -30,17 +30,19 @@ __global__
 void update_seg_subset(float* img, int* seg, bool* border,
                        spix_params* sp_params,
                        const float sigma2_app, const float potts,
-                       const int npix, const int nbatch,
+                       const int npix, const int nspix_buffer,
                        const int width, const int height, const int nftrs,
                        const int xmod3, const int ymod3){
 
     int label_check;
-    int idx = threadIdx.x + blockIdx.x*blockDim.x;
-   // idx = idx_img;
-
-    int pix_idx = idx; 
+    int pix_idx = threadIdx.x + blockIdx.x*blockDim.x; 
     if (pix_idx>=npix)  return;
     // todo; add batch info here.
+    int batch_ix = blockIdx.y;
+    pix_idx = pix_idx + npix*batch_ix;
+    int label_offset = nspix_buffer*batch_ix;
+    int idx = pix_idx; // im lazy
+
 
     int x = pix_idx % width;  
     if (x % 2 != xmod3) return;
@@ -146,34 +148,34 @@ void update_seg_subset(float* img, int* seg, bool* border,
     label_check = N;
     // assert(label_check >= 0);
     if (valid){
-      res_max = calc_joint(imgC,seg,x,y,sp_params,label_check,
-                           sigma2_app,count_diff_nbrs_N,potts,res_max);
+      res_max = calc_joint(imgC,seg,x,y,sp_params,label_check+label_offset,
+                           label_check,sigma2_app,count_diff_nbrs_N,potts,res_max);
     }
 
     valid = S>=0;
     label_check = S;
     // assert(label_check >= 0);
     if((label_check!=N)&&valid)
-      res_max = calc_joint(imgC,seg,x,y,sp_params,label_check,
-                           sigma2_app,count_diff_nbrs_S,potts,res_max);
+      res_max = calc_joint(imgC,seg,x,y,sp_params,label_check+label_offset,
+                           label_check,sigma2_app,count_diff_nbrs_S,potts,res_max);
 
     valid = W>=0;
     label_check = W;
     // assert(label_check >= 0);
     if ( (label_check!=S)&&(label_check!=N)&&valid)
-      res_max = calc_joint(imgC,seg,x,y,sp_params,label_check,
-                           sigma2_app,count_diff_nbrs_W,potts,res_max);
+      res_max = calc_joint(imgC,seg,x,y,sp_params,label_check+label_offset,
+                           label_check,sigma2_app,count_diff_nbrs_W,potts,res_max);
     
     valid = E >=0;
     label_check = E;
     // assert(label_check >= 0);
     if((label_check!=W)&&(label_check!=S)&&(label_check!=N)&&valid)
-      res_max = calc_joint(imgC,seg,x,y,sp_params,label_check,
-                           sigma2_app,count_diff_nbrs_E,potts,res_max);
+      res_max = calc_joint(imgC,seg,x,y,sp_params,label_check+label_offset,
+                           label_check,sigma2_app,count_diff_nbrs_E,potts,res_max);
     
     // printf("[b] idx: %d\n",pix_idx);
 
-    int count_C = sp_params[C].count;
+    int count_C = sp_params[C+label_offset].count;
     if ((count_C <= 2) and (res_max.y == C)){
       if (N>=0){ res_max.y = N;}
       else if(E>=0){ res_max.y = E;}
@@ -193,8 +195,9 @@ void update_seg_subset(float* img, int* seg, bool* border,
 
 __device__ float2 calc_joint(float* imgC, int* seg,
                              int width_index, int height_index,
-                             spix_params* sp_params, int seg_idx,
-                             float sigma2_app,  float neigh_neq,
+                             spix_params* sp_params,
+			     int seg_label, int seg_index,
+			     float sigma2_app,  float neigh_neq,
                              float beta, float2 res_max){
 
     // -- init res --
@@ -202,32 +205,32 @@ __device__ float2 calc_joint(float* imgC, int* seg,
     /* float res = 0.; */
 
     // -- appearance --
-    int count = sp_params[seg_idx].count;
-    const float x0 = __ldg(&imgC[0])-__ldg(&sp_params[seg_idx].mu_app.x);
-    const float x1 = __ldg(&imgC[1])-__ldg(&sp_params[seg_idx].mu_app.y);
-    const float x2 = __ldg(&imgC[2])-__ldg(&sp_params[seg_idx].mu_app.z);
+    int count = sp_params[seg_index].count;
+    const float x0 = __ldg(&imgC[0])-__ldg(&sp_params[seg_index].mu_app.x);
+    const float x1 = __ldg(&imgC[1])-__ldg(&sp_params[seg_index].mu_app.y);
+    const float x2 = __ldg(&imgC[2])-__ldg(&sp_params[seg_index].mu_app.z);
     // float sigma_app;
-    // const float sigma_a = __ldg(&sp_params[seg_idx].prior_sigma_app);
-    // const float sigma_a_x = __ldg(&sp_params[seg_idx].prior_sigma_app.x);
-    // const float sigma_a_y = __ldg(&sp_params[seg_idx].prior_sigma_app.y);
-    // const float sigma_a_z = __ldg(&sp_params[seg_idx].prior_sigma_app.z);
-    // const float logdet_sigma_app = __ldg(&sp_params[seg_idx].logdet_sigma_app);
+    // const float sigma_a = __ldg(&sp_params[seg_index].prior_sigma_app);
+    // const float sigma_a_x = __ldg(&sp_params[seg_index].prior_sigma_app.x);
+    // const float sigma_a_y = __ldg(&sp_params[seg_index].prior_sigma_app.y);
+    // const float sigma_a_z = __ldg(&sp_params[seg_index].prior_sigma_app.z);
+    // const float logdet_sigma_app = __ldg(&sp_params[seg_index].logdet_sigma_app);
     const float logdet_sigma_app = 3.*log(sigma2_app);
 
     // -- shape --
-    const int d0 = width_index - __ldg(&sp_params[seg_idx].mu_shape.x);
-    const int d1 = height_index - __ldg(&sp_params[seg_idx].mu_shape.y);
-    const float sigma_s_x = __ldg(&sp_params[seg_idx].sigma_shape.x);
-    const float sigma_s_y = __ldg(&sp_params[seg_idx].sigma_shape.y);
-    const float sigma_s_z = __ldg(&sp_params[seg_idx].sigma_shape.z);
-    const float logdet_sigma_shape = __ldg(&sp_params[seg_idx].logdet_sigma_shape);
+    const int d0 = width_index - __ldg(&sp_params[seg_index].mu_shape.x);
+    const int d1 = height_index - __ldg(&sp_params[seg_index].mu_shape.y);
+    const float sigma_s_x = __ldg(&sp_params[seg_index].sigma_shape.x);
+    const float sigma_s_y = __ldg(&sp_params[seg_index].sigma_shape.y);
+    const float sigma_s_z = __ldg(&sp_params[seg_index].sigma_shape.z);
+    const float logdet_sigma_shape = __ldg(&sp_params[seg_index].logdet_sigma_shape);
 
     // -- appearance [sigma is actually \sigma^2] --
     res = res - (x0*x0 + x1*x1 + x2*x2)/sigma2_app;
     // printf("res: %2.2f\n",res);
 
     // -- info only --
-    float3 mu_app = sp_params[seg_idx].mu_app;
+    float3 mu_app = sp_params[seg_index].mu_app;
     // printf("mu_app: [%2.2f,%2.2f,%2.2f],[%2.2f,%2.2f,%2.2f].[%2.2f]\n",
     //        mu_app.x,mu_app.y,mu_app.z,imgC[0],imgC[1],imgC[2],sigma2_app);
     // res = res - logdet_sigma_app;
@@ -241,7 +244,7 @@ __device__ float2 calc_joint(float* imgC, int* seg,
     res = res - logdet_sigma_shape;
 
     // -- prior --
-    /* res = res - sp_params[seg_idx].prior_lprob; */
+    /* res = res - sp_params[seg_index].prior_lprob; */
 
     // -- potts term --
     res = res - beta*neigh_neq;
@@ -250,7 +253,7 @@ __device__ float2 calc_joint(float* imgC, int* seg,
     // -- update res --
     if( res>res_max.x ){
       res_max.x = res;
-      res_max.y = seg_idx;
+      res_max.y = seg_label;
     }
 
 
@@ -281,7 +284,8 @@ __device__ float2 calc_joint(float* imgC, int* seg,
 __host__ void update_seg(float* img, int* seg, bool* border,
                          spix_params* sp_params, const int niters,
                          const float sigma2_app, const float potts,
-                         const int npix, int nbatch, int width, int height, int nftrs,
+                         const int npix, int nspix_buffer,
+			 int nbatch, int width, int height, int nftrs,
                          Logger* logger){
     
     // printf("npix, nbatch, width, height, nftrs: %d,%d,%d,%d,%d\n",
@@ -290,7 +294,7 @@ __host__ void update_seg(float* img, int* seg, bool* border,
     int num_block = ceil( double(npix) / double(THREADS_PER_BLOCK) ); 
     dim3 ThreadPerBlock(THREADS_PER_BLOCK,1);
     dim3 BlockPerGrid(num_block,nbatch);
-    assert(nbatch==1);
+    // assert(nbatch==1);
     for (int iter = 0 ; iter < niters; iter++){
         cudaMemset(border, 0, npix*sizeof(bool));
         find_border_pixels<<<BlockPerGrid,ThreadPerBlock>>>(seg,border,npix,width,height);
@@ -304,6 +308,8 @@ __host__ void update_seg(float* img, int* seg, bool* border,
                 update_seg_subset<<<BlockPerGrid,ThreadPerBlock>>>(img, seg, \
                      border, sp_params, sigma2_app, potts,\
                      npix, nbatch, width, height, nftrs, xmod3, ymod3);
+		gpuErrchk( cudaPeekAtLastError() );
+		gpuErrchk( cudaDeviceSynchronize() );
                 if (logger!=nullptr){
                   logger->boundary_update(seg);
                 }

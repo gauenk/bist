@@ -18,7 +18,7 @@ int compactify_new_superpixels(int* spix, spix_params* sp_params,
                                int prev_nspix,int max_spix,int npix);
 
 thrust::device_vector<int>
-extract_unique_ids(int* spix, int max_spix, int prev_nspix);
+extract_unique_ids(int* spix, int npix, int prev_nspix);
 thrust::device_vector<int>
 remove_old_ids(thrust::device_vector<int>& spix_vector, int prev_nspix);
 

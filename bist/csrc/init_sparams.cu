@@ -22,24 +22,43 @@
 
 **************************************************/
 
-__host__ void init_sp_params(spix_params* sp_params,
-                             float prior_sigma_app,
+__host__ void init_sp_params(spix_params* sp_params, float prior_sigma_app,
                              float* img, int* spix, spix_helper* sp_helper,
-                             int npix, int nspix, int nspix_buffer,
+                             int nspix, int nspix_buffer, int npix,
                              int nbatch, int width, int nftrs, int sp_size){
 
-  int count = npix/(1.*nspix);
-  //printf("count, sp_size: %d,%d\n",count,sp_size);
+  // int count = npix/(1.*nspix);
+  // //printf("count, sp_size: %d,%d\n",count,sp_size);
 
   // -- fill sp_params with summary statistics --
   update_params_summ(img, spix, sp_params, sp_helper,
                      prior_sigma_app, npix, nspix_buffer, nbatch, width, nftrs);
   int num_block = ceil( double(nspix_buffer)/double(THREADS_PER_BLOCK) );
   dim3 ThreadPerBlock(THREADS_PER_BLOCK,1);
-  dim3 BlockPerGrid(num_block,1);
+  dim3 BlockPerGrid(num_block,nbatch);
   init_sp_params_kernel<<<BlockPerGrid,ThreadPerBlock>>>(sp_params, prior_sigma_app,
                                                          nspix, nspix_buffer,
                                                          npix, sp_size);
+}
+
+
+__host__ void init_sp_params_b(spix_params* sp_params, float prior_sigma_app,
+                             float* img, int* spix, spix_helper* sp_helper,
+                             thrust::device_vector<int>& nspix, int nspix_buffer, int npix,
+                             int nbatch, int width, int nftrs, int sp_size){
+
+  // int count = npix/(1.*nspix);
+  // //printf("count, sp_size: %d,%d\n",count,sp_size);
+
+  // -- fill sp_params with summary statistics --
+  update_params_summ(img, spix, sp_params, sp_helper,
+                     prior_sigma_app, npix, nspix_buffer, nbatch, width, nftrs);
+  int num_block = ceil( double(nspix_buffer)/double(THREADS_PER_BLOCK) );
+  dim3 ThreadPerBlock(THREADS_PER_BLOCK,1);
+  dim3 BlockPerGrid(num_block,nbatch);
+  int* nspix_ptr = thrust::raw_pointer_cast(nspix.data());
+  init_sp_params_kernel_b<<<BlockPerGrid,ThreadPerBlock>>>(sp_params, prior_sigma_app,
+                                                           nspix_ptr, nspix_buffer, npix, sp_size);
 }
 
 __global__ void init_sp_params_kernel(spix_params* sp_params,
@@ -49,6 +68,7 @@ __global__ void init_sp_params_kernel(spix_params* sp_params,
   // the label
   int k = threadIdx.x + blockIdx.x * blockDim.x;  
   if (k>=nspix_buffer) return;
+  k = k + nspix_buffer*blockIdx.y; // batch dimension
 
   /****************************************************
 
@@ -145,6 +165,7 @@ __global__ void init_sp_params_kernel(spix_params* sp_params,
 
     sp_params[k].prop = false;
     sp_params[k].valid = 0;
+    sp_params[k].prior_count = 0;
 
     // -- prior cov --
     double3 icov;
@@ -167,7 +188,131 @@ __global__ void init_sp_params_kernel(spix_params* sp_params,
 
 
 
+__global__ void init_sp_params_kernel_b(spix_params* sp_params,
+                                      float prior_sigma_app,
+                                      const int* nspix, int nspix_buffer,
+                                      int npix, int sp_size){
+  // the label
+  int nspix_b = nspix[blockIdx.y]; // batch dimension
+  int k = threadIdx.x + blockIdx.x * blockDim.x;  
+  if (k>=nspix_buffer) return;
+  k = k + nspix_buffer*blockIdx.y; // batch dimension
 
+  /****************************************************
+
+           Shift Summary Statistics to Prior
+
+  *****************************************************/
+
+  int count = npix/(1.*nspix_b);
+
+  double3 prior_sigma_shape;
+  prior_sigma_shape.x = 1.0/sp_size;
+  prior_sigma_shape.y = 0.;
+  prior_sigma_shape.z = 1.0/sp_size;
+  sp_params[k].prior_sigma_shape = prior_sigma_shape;
+  // sp_params[k].sm_count = 100;
+
+  // int count = max(sp_params[k].count,1);
+  if(k<nspix_b) {
+
+    // -- activate! --
+    sp_params[k].valid = 1;
+    sp_params[k].prior_count = count;
+
+    // -- appearance --
+    sp_params[k].prior_mu_app = sp_params[k].mu_app;
+    // sp_params[k].prior_sigma_app.x = prior_sigma_app;
+    // sp_params[k].prior_sigma_app.y = prior_sigma_app;
+    // sp_params[k].prior_sigma_app.z = prior_sigma_app;
+    sp_params[k].prior_mu_app_count = 1;
+    // sp_params[k].prior_sigma_app_count = count;
+    sp_params[k].mu_app.x = 0;
+    sp_params[k].mu_app.y = 0;
+    sp_params[k].mu_app.z = 0;
+    // sp_params[k].sigma_app.x = 0;
+    // sp_params[k].sigma_app.y = 0;
+    // sp_params[k].sigma_app.z = 0;
+
+    // -- shape --
+    // sp_params[k].prior_mu_shape = sp_params[k].mu_shape;
+    // sp_params[k].prior_mu_shape.x = 0;
+    // sp_params[k].prior_mu_shape.y = 0;
+    // // sp_params[k].prior_sigma_shape = sp_params[k].sigma_shape;
+
+    // -- prior cov --
+    double3 icov;
+    icov.x = 1;
+    icov.y = 0;
+    icov.z = 1;
+    sp_params[k].prior_icov = icov;
+    // sp_params[sp_index].prior_icov_eig = make_double3(1,1,2);
+
+    // double3 prior_sigma_shape;
+    // sp_params[k].prior_sigma_shape = prior_sigma_shape;
+
+    sp_params[k].prior_mu_shape_count = 1;
+    sp_params[k].prior_sigma_shape_count = count;
+    sp_params[k].logdet_prior_sigma_shape = 4*logf(1.*max(count,1));
+    sp_params[k].mu_shape.x = 0;
+    sp_params[k].mu_shape.y = 0;
+    sp_params[k].sigma_shape.x = 0;
+    sp_params[k].sigma_shape.y = 0;
+    sp_params[k].sigma_shape.z = 0;
+    sp_params[k].prop = false;
+
+
+  }else{
+    sp_params[k].count = 0;
+    float3 mu_app;
+    mu_app.x = 0;
+    mu_app.y = 0;
+    mu_app.z = 0;
+    sp_params[k].mu_app = mu_app;
+    sp_params[k].prior_mu_app = mu_app;
+    sp_params[k].prior_mu_app_count = 1;
+
+    double2 mu_shape;
+    mu_shape.x = 0;
+    mu_shape.y = 0;
+    sp_params[k].mu_shape = mu_shape;
+    sp_params[k].prior_mu_shape_count = 1;
+
+    sp_params[k].prior_mu_shape = sp_params[k].mu_shape;
+    sp_params[k].prior_mu_shape.x = 0;
+    sp_params[k].prior_mu_shape.y = 0;
+    sp_params[k].prior_mu_shape_count = 1;
+    sp_params[k].prior_sigma_shape_count = count;
+    sp_params[k].logdet_prior_sigma_shape = 4*logf(1.*max(count,1));
+    sp_params[k].mu_shape.x = 0;
+    sp_params[k].mu_shape.y = 0;
+    sp_params[k].sigma_shape.x = 0;
+    sp_params[k].sigma_shape.y = 0;
+    sp_params[k].sigma_shape.z = 0;
+    sp_params[k].logdet_sigma_shape = 0;
+
+    sp_params[k].prop = false;
+    sp_params[k].valid = 0;
+    sp_params[k].prior_count = 0;
+
+    // -- prior cov --
+    double3 icov;
+    icov.x = 1;
+    icov.y = 0;
+    icov.z = 1;
+    sp_params[k].prior_icov = icov;
+    // sp_params[sp_index].prior_icov_eig = make_double3(1,1,2);
+
+    // -- fixed for debugging --
+    // sp_params[k].prior_sigma_shape.x = count*count;
+    // sp_params[k].prior_sigma_shape.z = count*count;
+    // sp_params[k].prior_sigma_shape.y = 0;
+    // sp_params[k].prior_sigma_shape_count = count;
+    // sp_params[k].logdet_prior_sigma_shape = 4*log(max(count,1));
+
+  }
+
+}
 
 
 

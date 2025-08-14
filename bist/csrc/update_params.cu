@@ -23,9 +23,9 @@ __host__ void update_params(const float* img, const int* spix,
     dim3 BlockPerGrid2(num_block2,nbatch);
     clear_fields<<<BlockPerGrid2,ThreadPerBlock>>>(sp_params,sp_helper,
                                                    nspix_buffer,nftrs);
-	cudaMemset(sp_helper, 0, nspix_buffer*sizeof(spix_helper));
+    cudaMemset(sp_helper, 0, nbatch*nspix_buffer*sizeof(spix_helper));
     sum_by_label<<<BlockPerGrid1,ThreadPerBlock>>>(img,spix,sp_params,sp_helper,
-                                                   npixels,nbatch,width,nftrs);
+                                                   npixels,nbatch,width,nftrs,nspix_buffer);
     calc_simple_update<<<BlockPerGrid2,ThreadPerBlock>>>(sp_params,sp_helper,
                                                          sigma2_app, sp_size,
                                                          nspix_buffer, prop_flag);
@@ -63,14 +63,14 @@ __host__ void update_params_summ(const float* img, const int* spix,
 
   	dim3 ThreadPerBlock(THREADS_PER_BLOCK,1);
     int num_block1 = ceil( double(npixels) / double(THREADS_PER_BLOCK) ); 
-	int num_block2 = ceil( double(nspix_buffer) / double(THREADS_PER_BLOCK) );
+	  int num_block2 = ceil( double(nspix_buffer) / double(THREADS_PER_BLOCK) );
     dim3 BlockPerGrid1(num_block1,nbatch);
     dim3 BlockPerGrid2(num_block2,nbatch);
     clear_fields<<<BlockPerGrid2,ThreadPerBlock>>>(sp_params,sp_helper,
                                                    nspix_buffer,nftrs);
-	cudaMemset(sp_helper, 0, nspix_buffer*sizeof(spix_helper));
+    cudaMemset(sp_helper, 0, nspix_buffer*sizeof(spix_helper));
     sum_by_label<<<BlockPerGrid1,ThreadPerBlock>>>(img,spix,sp_params,sp_helper,
-                                                   npixels,nbatch,width,nftrs);
+                                                   npixels,nbatch,width,nftrs,nspix_buffer);
     calc_summ_stats<<<BlockPerGrid2,ThreadPerBlock>>>(sp_params,sp_helper,
                                                       sigma_app,nspix_buffer); 
 }
@@ -83,6 +83,7 @@ void clear_fields(spix_params* sp_params,
 
 	int k = threadIdx.x + blockIdx.x * blockDim.x;  // the label
 	if (k>=nsuperpixel_buffer) return;
+	k = k + nsuperpixel_buffer*blockIdx.y; // batch dimension
 	// if (sp_params[k].valid == 0) return;
 
 	sp_params[k].count = 0;
@@ -114,16 +115,19 @@ __global__
 void sum_by_label(const float* img, const int* spix,
                   spix_params* sp_params, spix_helper* sp_helper,
                   const int npixels, const int nbatch,
-                  const int width, const int nftrs) {
+                  const int width, const int nftrs, const int nspix_buffer) {
 
-    // todo -- add nbatch and nftrs
-    // getting the index of the pixel
+    // --> getting the index of the pixel
     int t = threadIdx.x + blockIdx.x * blockDim.x;
-	if (t>=npixels) return;
+    if (t>=npixels) return;
+    // --> get the label
+    int batch_ix = blockIdx.y;
+    t = t + npixels*batch_ix;
 
-	//get the label
-	int k = spix[t];
+    int k = spix[t];
     if (k < 0){ return; } // invalid label
+    int label_offset = nspix_buffer * batch_ix;
+    k = k + label_offset;
     // if (sp_params[k].valid != 1){
     //   printf("invalid, living spix id %d\n",k);
     // }
@@ -169,6 +173,7 @@ void calc_summ_stats(spix_params*  sp_params,spix_helper* sp_helper,
     // -- update thread --
 	int k = threadIdx.x + blockIdx.x * blockDim.x; // the label
 	if (k>=nsuperpixel_buffer) return;
+  k = k + nsuperpixel_buffer*blockIdx.y; // batch dimension
 	if (sp_params[k].valid == 0) return;
     
     // -- read curr --
@@ -251,6 +256,7 @@ void calc_simple_update(spix_params*  sp_params,spix_helper* sp_helper,
 	int k = threadIdx.x + blockIdx.x * blockDim.x; // the label
 	if (k>=nsuperpixel_buffer) return;
 	if (sp_params[k].valid == 0) return;
+	k = k + nsuperpixel_buffer*blockIdx.y;
     
     // -- read curr --
 	int count_int = sp_params[k].count;

@@ -15,7 +15,15 @@ __host__ int bass(float* img, int* seg,spix_params* sp_params,bool* border,
 
 std::tuple<int*,bool*,SuperpixelParams*>
  run_bass(float* img, int nbatch, int height, int width, int nftrs,
-           int niters, int niters_seg, int sm_start, int sp_size,
-           float sigma2_app, float sigma2_size,
-          float potts, float alpha_hastings, float split_alpha,
-          int target_nspix,Logger* logger=nullptr);
+          int niters, int niters_seg, int sm_start, int sp_size,
+          float sigma2_app, float sigma2_size, float potts,
+          float alpha_hastings, float split_alpha, int target_nspix, Logger* logger=nullptr);
+
+
+std::tuple<int*,bool*,SuperpixelParams*>
+run_batched_bass(float* img, int nbatch, int height, int width, int nftrs,
+		 int niters, int niters_seg, int sm_start, int sp_size,
+		 float sigma2_app, float sigma2_size, float potts,
+		 float alpha_hastings, float split_alpha, int target_nspix, Logger* logger=nullptr);
+
+

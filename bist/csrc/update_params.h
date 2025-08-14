@@ -34,7 +34,7 @@ __global__ void sum_by_label(const float* img, const int* seg,
                              spix_params* sp_params,
                              spix_helper* sp_helper,
                              const int npix, const int nbatch,
-                             const int width, const int nftrs);
+                             const int width, const int nftrs, const int nspix_buffer);
 
 __host__
 void store_sample_sigma_shape(spix_params* sp_params,spix_helper* sp_helper,

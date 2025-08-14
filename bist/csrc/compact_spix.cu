@@ -256,8 +256,8 @@ void fill_new_params_from_old(spix_params* params, spix_params*  new_params,
   new_params[dest_ix].prior_sigma_shape_count = params[src_ix].prior_sigma_shape_count;
   // new_params[dest_ix].logdet_sigma_app = params[src_ix].logdet_sigma_app;
   new_params[dest_ix].logdet_sigma_shape = params[src_ix].logdet_sigma_shape;
-  new_params[dest_ix].logdet_prior_sigma_shape = params[src_ix].logdet_prior_sigma_shape;
-  new_params[dest_ix].prior_lprob = params[src_ix].prior_lprob;
+  // new_params[dest_ix].logdet_prior_sigma_shape = params[src_ix].logdet_prior_sigma_shape;
+  // new_params[dest_ix].prior_lprob = params[src_ix].prior_lprob;
   new_params[dest_ix].count = params[src_ix].count;
   new_params[dest_ix].prior_count = params[src_ix].prior_count;
   new_params[dest_ix].valid = params[src_ix].valid;
@@ -287,7 +287,7 @@ void fill_old_params_from_new(spix_params* params, spix_params*  new_params,
   // params[prev_max+ix].logdet_sigma_app = new_params[ix].logdet_sigma_app;
   params[prev_max+ix].logdet_sigma_shape = new_params[ix].logdet_sigma_shape;
   params[prev_max+ix].logdet_prior_sigma_shape = new_params[ix].logdet_prior_sigma_shape;
-  params[prev_max+ix].prior_lprob = new_params[ix].prior_lprob;
+  // params[prev_max+ix].prior_lprob = new_params[ix].prior_lprob;
   params[prev_max+ix].count = new_params[ix].count;
   params[prev_max+ix].prior_count = new_params[ix].prior_count;
   params[prev_max+ix].valid = new_params[ix].valid;
