@@ -116,7 +116,8 @@ int run_manual_nan_count(float* arr, int size){
 
 std::tuple<int*,int*>
 shift_and_fill(int* spix, SuperpixelParams* params, float* flow,
-               int nbatch, int height, int width, bool prop_nc, Logger* logger){
+               int nbatch, int height, int width, int sp_size,
+               bool prop_nc, bool overlap_sm, Logger* logger){
 
 
   // -- info --
@@ -125,7 +126,7 @@ shift_and_fill(int* spix, SuperpixelParams* params, float* flow,
 
   // -- log flow shift --
   if (logger != nullptr){
-    animate_flow_motion(spix,params,flow,nbatch,height,width,prop_nc,logger);
+    animate_flow_motion(spix,params,flow,nbatch,height,width,prop_nc,overlap_sm,logger);
   }
 
   // -- pool flow --
@@ -181,7 +182,7 @@ shift_and_fill(int* spix, SuperpixelParams* params, float* flow,
   // -- shift superpixel segmentation --
   // printf("shift\n");
   int* shifted_spix = run_shift_labels(spix, spix, flow_ds, counts,
-                                       nspix, nbatch, height, width);
+                                       nspix, nbatch, height, width, overlap_sm);
   int* filled_spix = (int*)easy_allocate(nbatch*npix,sizeof(int));
   cudaMemcpy(filled_spix, shifted_spix, nbatch*npix*sizeof(int),cudaMemcpyDeviceToDevice);
   thrust::device_vector<int> _counts_s =  get_spix_counts(filled_spix,1,npix,nspix);
@@ -205,7 +206,7 @@ shift_and_fill(int* spix, SuperpixelParams* params, float* flow,
   // printf("fill0.\n");
   int break_iter = 1000;
   double* centers_ptr = thrust::raw_pointer_cast(centers.data());
-  run_fill_missing(filled_spix, centers_ptr, nbatch, height, width, break_iter, logger);
+  run_fill_missing(filled_spix, centers_ptr, nbatch, height, width, break_iter, sp_size, logger);
 
   // -- invalidate disconnectd regions --
   // printf("invalid.\n");
@@ -217,8 +218,7 @@ shift_and_fill(int* spix, SuperpixelParams* params, float* flow,
 
   // -- fill --
   // printf("fill1.\n");
-  run_fill_missing(filled_spix, centers_ptr,
-                   nbatch, height, width, break_iter);
+  run_fill_missing(filled_spix, centers_ptr, nbatch, height, width, break_iter, sp_size);
 
 
   // -- check [testing only] --
@@ -371,7 +371,7 @@ shift_and_fill(int* spix, SuperpixelParams* params, float* flow,
 ***********************************************/
 
 void animate_flow_motion(int* spix, SuperpixelParams* params, float* flow,
-                         int nbatch, int height, int width, bool prop_nc, Logger* logger){
+                         int nbatch, int height, int width, bool prop_nc, bool overlap_sm, Logger* logger){
   // -- unpack --
   int nspix = params->ids.size();
   int npix = height*width;
@@ -409,7 +409,8 @@ void animate_flow_motion(int* spix, SuperpixelParams* params, float* flow,
     int* pix_labels_ptr = thrust::raw_pointer_cast(pix_labels.data());
 
     // -- shift superpixel segmentation --
-    int* shifted_spix = run_shift_labels(pix_labels_ptr, spix, flow_ds, counts, nspix, nbatch, height, width);
+    int* shifted_spix = run_shift_labels(pix_labels_ptr, spix, flow_ds, counts,
+                                         nspix, nbatch, height, width, overlap_sm);
 
     // -- log it! --
     logger->save_shifted_spix(shifted_spix);

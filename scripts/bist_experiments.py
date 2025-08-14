@@ -71,6 +71,11 @@ def relabeling_exps(default):
     exps = bist.utils.get_exps(config,default)
     return exps
 
+def overlap_exps(default):
+    config = {"overlap":[0,1],"group":["overlap"]}
+    exps = bist.utils.get_exps(config,default)
+    return exps
+
 def boundary_shape_exps(default):
     config = {"sigma_app":[0.0045,0.009,0.018],
               "potts":[1.0,10.,20.],"group":["bshape"]}
@@ -84,6 +89,7 @@ def conditioned_boundary_updates_exps(default):
 
 def optical_flow_exps(default):
     config = {"flow":["default","raft","spynet"],"group":["flow"]}
+    # config = {"flow":["raft"],"group":["flow"]}
     exps = bist.utils.get_exps(config,default)
     return exps
 
@@ -143,24 +149,36 @@ def main():
     # exps += split_step_exps(default)
     # exps += relabeling_exps(default)
     # exps += boundary_shape_exps(default)
-    exps = split_step_exps(default)
-    # print(exps)
+    # exps = split_step_exps(default)
+    # exps = overlap_exps(default)
+    # exps = overlap_exps(default)
+    # exps = [e for e in exps if e['overlap'] == 0]
+    # # print(exps)
+
+    # # -- run each experiment a few times --
+    # nreps = 1
+    # for exp in exps:
+    #     print(exp)
+    #     for rep in range(nreps):
+    #         spix_root = save_root / exp['group'] / exp['id'] / ("rep%d"%rep)
+    #         save_exp_info(exp,save_root / "info")
+    #         run_exp(dname,exp,spix_root)
+    # return
 
     # -- run each experiment a few times --
-    nreps = 1
-    for exp in exps:
-        print(exp)
-        for rep in range(nreps):
-            spix_root = save_root / exp['group'] / exp['id'] / ("rep%d"%rep)
-            save_exp_info(exp,save_root / "info")
-            run_exp(dname,exp,spix_root)
-    return
-
+    # nreps = 5
+    # for exp in exps:
+    #     print(exp)
+    #     for rep in range(1,nreps):
+    #         spix_root = save_root / exp['group'] / exp['id'] / ("rep%d"%rep)
+    #         save_exp_info(exp,save_root / "info")
+    #         run_exp(dname,exp,spix_root)
+    # return
 
     # -- run [split step & conditional boundary] several times --
-    exps = split_step_for_rep_exps(default)
-    print(exps)
-    nreps = 10
+    # exps = split_step_for_rep_exps(default)
+    # print(exps)
+    # nreps = 10
     # exps += conditioned_boundary_updates_exps(default)
     # nreps = 10
     # for exp in exps:
@@ -170,19 +188,19 @@ def main():
     #         run_exp(dname,exp,spix_root)
 
     # -- run [optical flow] on segtrackv2 --
-    # dname = "segtrackv2"
-    # save_root = Path("results_v2/")/dname
-    # if not save_root.exists():
-    #     save_root.mkdir(parents=True)
+    dname = "segtrackv2"
+    save_root = Path("results_v2/")/dname
+    if not save_root.exists():
+        save_root.mkdir(parents=True)
     # exps = bist_exps(default)
     # exps += bass_exps(default)
-    # exps += optical_flow_exps(default)
-    # nreps = 1
-    # for exp in exps:
-    #     for rep in range(nreps):
-    #         spix_root = save_root / exp['group'] / exp['id'] / ("rep%d"%rep)
-    #         save_exp_info(exp,save_root / "info")
-    #         run_exp(dname,exp,spix_root)
+    exps = optical_flow_exps(default)
+    nreps = 1
+    for exp in exps:
+        for rep in range(nreps):
+            spix_root = save_root / exp['group'] / exp['id'] / ("rep%d"%rep)
+            save_exp_info(exp,save_root / "info")
+            run_exp(dname,exp,spix_root)
 
 
 if __name__ == "__main__":

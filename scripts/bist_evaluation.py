@@ -234,6 +234,28 @@ def optical_flow_exps(results):
     view_table(results_s[['id','flow','ave_nsp','tex','szv']])
     view_table(results_s[['id','ue2d','ue3d','sa2d','sa3d','pooling']])
 
+def overlap_exps(results):
+
+    # -- prepare results --
+    N = 1.*len(pd.unique(results['vname']))*len(pd.unique(results['rep']))
+    print("N: ",N)
+    results = results[results['group'] == "overlap"]
+    nrep = len(results['rep'].unique())
+    results = results.drop(columns=["vname","rep","flow"],axis=1)
+    results_m = results.groupby(["group","id"]).mean().reset_index()
+    results_s = (results.groupby(["group","id"]).std()/math.sqrt(N)).reset_index()
+
+    # -- view results --
+    terminal_width = shutil.get_terminal_size().columns
+    print("\n"*2)
+    print("Overlap Terms.".center(terminal_width))
+    print("Averages:")
+    view_table(results_m[['id','overlap','ave_nsp','tex','szv']])
+    view_table(results_m[['id','ue2d','ue3d','sa2d','sa3d','pooling']])
+    print("Standard Error:")
+    view_table(results_s[['id','overlap','ave_nsp','tex','szv']])
+    view_table(results_s[['id','ue2d','ue3d','sa2d','sa3d','pooling']])
+
 def read_exps(save_root):
     exps = []
     for fname in save_root.iterdir():
@@ -246,7 +268,7 @@ def read_exps(save_root):
 # -- Primary Evaluation Function --
 #
 
-def evaluate_exp(dname,exp,spix_root,eval_root,refresh=False):
+def evaluate_exp(dname,exp,spix_root,eval_root,rep,refresh=False):
 
     # -- compute results --
     results = []
@@ -264,7 +286,7 @@ def evaluate_exp(dname,exp,spix_root,eval_root,refresh=False):
         # refresh = vname == "bike-packing"
 
         # -- read cache --
-        res = bist.utils.read_cache(cache_root,dname,vname,exp['group'],exp['id'])
+        res = bist.utils.read_cache(cache_root,dname,vname,exp['group'],exp['id'],rep)
         if not(res is None) and not(refresh):
             results.append(res)
             continue
@@ -293,7 +315,7 @@ def evaluate_exp(dname,exp,spix_root,eval_root,refresh=False):
         results.append(pd.DataFrame([res]))
 
         # -- save cache --
-        bist.utils.save_cache([res],cache_root,dname,vname,exp['group'],exp['id'])
+        bist.utils.save_cache([res],cache_root,dname,vname,exp['group'],exp['id'],rep)
 
     results = pd.concat(results).reset_index(drop=True)
     return results
@@ -304,12 +326,12 @@ def main():
 
     # -- read experiment configs --
     dname = "davis"
-    # dname = "segtrackv2"
+    dname = "segtrackv2"
     # save_root = Path("results/")/dname
-    # save_root = Path("results_v2/")/dname
-    save_root = Path("results_v3/")/dname
+    save_root = Path("results_v2/")/dname
+    # save_root = Path("results_v3/")/dname
     exps = read_exps(save_root / "info")
-    refresh = True
+    refresh = False
 
     # -- [optionally] evaluate only a group (or some subset) --
     # exps = [exp for exp in exps if (exp['group'] in ['bass','bist'] )]
@@ -318,10 +340,14 @@ def main():
     # split_groups = ['split_g1',]# + ['bass',]
     # split_groups = ['split_g2']
     # _exps0 =[exp for exp in exps if exp['group'].startswith("rsplit")]
-    _exps1 = [exp for exp in exps if (exp['group'] in ["split_g5"])]
+    # _exps1 = [exp for exp in exps if (exp['group'] in ["split_g5"])]
     # _exps2 = [exp for exp in exps if (exp['group'] in ["bass"])]
     # exps = _exps0# + _exps1# + _exps2
-    exps = _exps1
+    # exps = _exps1
+    # exps = [ exp for exp in exps if exp['group'] == "overlap" ]
+    exps = [ exp for exp in exps if exp['group'] == "flow" ]
+    # exps = [e for e in exps if e['overlap'] == 0]
+    # exps = [e for e in exps if e['overlap'] == 1]
     print(exps)
     # exps = [exp for exp in exps if (exp['group'] in ['cboundary'] )]
     # exps = [exp for exp in exps if (exp['group'] in ['flow'] )]
@@ -329,24 +355,25 @@ def main():
     # -- evaluate over a grid --
     eval_root = save_root / "eval"
     nreps = 10
-    # nreps = 5
+    nreps = 3
     results = []
     for exp in exps:
         for rep in range(nreps):
             spix_root = save_root / exp['group'] / exp['id'] / ("rep%d"%rep)
             if not spix_root.exists(): continue
-            res = evaluate_exp(dname,exp,spix_root,eval_root,refresh)
+            res = evaluate_exp(dname,exp,spix_root,eval_root,rep,refresh)
             res['rep'] = rep
             results.append(res)
     results = pd.concat(results)
 
     # -- view results --
     # bist_bass_exps(results)
-    split_step_exps(results)
+    # split_step_exps(results)
     # relabeling_exps(results)
     # boundary_shape_exps(results)
+    # overlap_exps(results)
     # conditioned_boundary_updates_exps(results)
-    # optical_flow_exps(results) # run for segtrackv2
+    optical_flow_exps(results) # run for segtrackv2
 
 
 if __name__ == "__main__":

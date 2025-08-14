@@ -51,7 +51,7 @@ __host__ int bass(float* img, int* seg, spix_params* sp_params, bool* border,
                   float sigma2_app,  float sigma2_size, int sp_size,
                   float potts, float alpha_hastings, float split_alpha, int nspix,
                   int nspix_buffer, int nbatch, int width, int height, int nftrs,
-                  int target_nspix, Logger* logger){
+                  int target_nspix,  bool use_sm, Logger* logger){
 
     // // -- init --
     bool prop_flag = false;
@@ -70,7 +70,8 @@ __host__ int bass(float* img, int* seg, spix_params* sp_params, bool* border,
       niters = 5000;
     }
 
-    //printf("niters: %d\n",niters);
+    
+    // printf("niters: %d\n",niters);
     for (int idx = 0; idx < niters; idx++) {
 
 
@@ -110,6 +111,7 @@ __host__ int bass(float* img, int* seg, spix_params* sp_params, bool* border,
       }
 
       // -- Update Parameters --
+      // printf("[%d] update_params.\n",idx);
       update_params(img, seg, sp_params, sp_helper, sigma2_app,
                     npix, sp_size, nspix_buffer, nbatch, width, nftrs, prop_flag);
 
@@ -119,14 +121,14 @@ __host__ int bass(float* img, int* seg, spix_params* sp_params, bool* border,
 
 
       // -- Run Split/Merge --
-      if (idx > sm_start){
+      if ((idx > sm_start) and (use_sm)){
         if(idx%4 == 0){
           // count = 2;
           max_spix = run_split_orig(img, seg, border, sp_params,
-                               sp_helper, sm_helper, sm_seg1, sm_seg2, sm_pairs,
-                               alpha_hastings, split_alpha,
-                               sigma2_app, sigma2_size, count,
-                               idx, max_spix,sp_size,npix,nbatch,width,
+                                    sp_helper, sm_helper, sm_seg1, sm_seg2, sm_pairs,
+                                    alpha_hastings, split_alpha,
+                                    sigma2_app, sigma2_size, count,
+                                    idx, max_spix,sp_size,npix,nbatch,width,
                                     height,nftrs,nspix_buffer,logger);
           // exit(1);
           // gpuErrchk( cudaPeekAtLastError() );
@@ -140,8 +142,8 @@ __host__ int bass(float* img, int* seg, spix_params* sp_params, bool* border,
         if( idx%4 == 2){
 
           run_merge_orig(img, seg, border, sp_params,
-                    sp_helper, sm_helper, sm_seg1, sm_seg2, sm_pairs,
-                    alpha_hastings, merge_alpha, sigma2_app, sigma2_size, count, idx,
+                         sp_helper, sm_helper, sm_seg1, sm_seg2, sm_pairs,
+                         alpha_hastings, merge_alpha, sigma2_app, sigma2_size, count, idx,
                          max_spix,sp_size,npix,nbatch,width,height,nftrs,nspix_buffer,logger);
           // exit(1);
           // gpuErrchk( cudaPeekAtLastError() );
@@ -157,6 +159,7 @@ __host__ int bass(float* img, int* seg, spix_params* sp_params, bool* border,
 
 
       // -- Update Segmentation --
+      // printf("[%d] update_seg.\n",idx);
       update_seg(img, seg, border, sp_params,
                  niters_seg, sigma2_app, potts,
                  npix, nspix_buffer, nbatch, width, height, nftrs, logger);
@@ -226,7 +229,8 @@ std::tuple<int*,bool*,SuperpixelParams*>
 run_bass(float* img, int nbatch, int height, int width, int nftrs,
          int niters, int niters_seg, int sm_start, int sp_size,
          float sigma2_app, float sigma2_size, float potts,
-         float alpha_hastings, float split_alpha, int target_nspix,Logger* logger){
+         float alpha_hastings, float split_alpha,
+         int target_nspix, bool use_sm, Logger* logger){
 
 
     // -- unpack --
@@ -306,7 +310,7 @@ run_bass(float* img, int nbatch, int height, int width, int nftrs,
                         border, sp_helper, sm_helper, sm_seg1, sm_seg2, sm_pairs,
                         niters, niters_seg, sm_start, sigma2_app, sigma2_size,
                         sp_size, potts, alpha_hastings, split_alpha, nspix, nspix_buffer,
-                        nbatch, width, height, nftrs, target_nspix,logger);
+                        nbatch, width, height, nftrs, target_nspix, use_sm, logger);
     // print_min_max(_spix, npix);
 
     // int max_spix = nspix-1;
@@ -411,7 +415,7 @@ __host__ void batch_bass(float* img, int* seg,spix_params* sp_params,bool* borde
                   float sigma2_app,  float sigma2_size, int sp_size,
                   float potts, float alpha_hastings, float split_alpha, //int* nspix,
                   int nspix_buffer, int nbatch, int width, int height, int nftrs,
-                  int target_nspix,Logger* logger){
+                  int target_nspix,  Logger* logger){
 
     // // -- init --
     bool prop_flag = false;

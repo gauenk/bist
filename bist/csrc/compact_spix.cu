@@ -88,6 +88,21 @@ int compactify_new_superpixels(int* spix, spix_params* sp_params,
   return compact_nspix;
 }
 
+void get_compact_spix(int* spix, int npix){
+
+  // -- get uniq spix --
+  thrust::device_vector<int> uniq = extract_unique_ids(spix, npix, 0);
+  int nuniq = uniq.size();
+  int* uniq_ptr = thrust::raw_pointer_cast(uniq.data());
+  
+  // -- update spix labels to copmact labeling --
+  int num_blocks = ceil( double(npix) / double(THREADS_PER_BLOCK) ); 
+  dim3 nblocks(num_blocks);
+  dim3 nthreads(THREADS_PER_BLOCK);
+  compact_spix_kernel<<<nblocks,nthreads>>>(spix, uniq_ptr, npix, nuniq);
+  
+}
+
 
 // Subroutine to extract unique IDs
 thrust::device_vector<int> extract_unique_ids(int* spix, int npix, int prev_nspix) {
@@ -190,6 +205,25 @@ thrust::device_vector<int> remove_old_ids(thrust::device_vector<int>& spix_vecto
 
 
 
+__global__ 
+void compact_spix_kernel(int* spix, int* uniq, int npix, int nuniq){
+
+  // -- indexing pixel indices --
+  int ix = threadIdx.x + blockIdx.x * blockDim.x;
+  if (ix >= npix) return;
+
+  // -- read current id --
+  int spix_id = spix[ix];
+
+  // -- update to compact index if "new" --
+  for (int jx=0; jx < nuniq; jx++){
+    if (spix_id == uniq[jx]){
+      spix[ix] = jx;
+      break;
+    }
+  }
+
+}
 
 
 

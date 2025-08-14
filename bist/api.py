@@ -22,8 +22,7 @@ def run(vid,flows,**kwargs):
     defaults = default_params()
     kwargs = extract(kwargs,defaults)
     sp_size = kwargs['sp_size']
-    niters = kwargs['niters']
-    if niters < 0: niters = sp_size
+    niters = kwargs['niters'] if 'niters' in kwargs else sp_size
     potts = kwargs['potts']
     sigma_app = kwargs['sigma_app']
     alpha = kwargs['alpha']
@@ -33,6 +32,7 @@ def run(vid,flows,**kwargs):
     split_alpha = kwargs['split_alpha']
     target_nspix = kwargs['target_nspix']
     video_mode = kwargs['video_mode']
+    use_sm = kwargs['use_sm']
     rgb2lab = kwargs['rgb2lab']
     sm_start = kwargs['sm_start']
     use_sm = kwargs['use_sm']
@@ -40,12 +40,14 @@ def run(vid,flows,**kwargs):
 
     # -- prep --
     assert vid.shape[-1] == 3,"Last Dimension Must be 3 Color Channels or 3 Features"
+    assert flows.shape[-1] == 2,"Last Dimension Must be 2 Channels"
 
     # -- run --
+    # print("niters: ",niters)
     fxn = bin.bist_cuda.run_bist
     spix = fxn(vid,flows,niters,sp_size,potts,sigma_app,alpha,
-               gamma,epsilon_new,epsilon_reid,
-               split_alpha,sm_start,target_nspix,video_mode,rgb2lab)
+               gamma,epsilon_new,epsilon_reid,split_alpha,target_nspix,
+               video_mode,use_sm,rgb2lab)
     return spix
 
 def run_bin(vid_root,flow_root,spix_root,img_ext,**kwargs):
@@ -54,7 +56,7 @@ def run_bin(vid_root,flow_root,spix_root,img_ext,**kwargs):
     defaults = default_params()
     kwargs = extract(kwargs,defaults)
     sp_size = kwargs['sp_size']
-    niters = sp_size
+    niters = kwargs['niters'] if 'niters' in kwargs else sp_size
     potts = kwargs['potts']
     sigma_app = kwargs['sigma_app']
     alpha = kwargs['alpha']
@@ -67,6 +69,7 @@ def run_bin(vid_root,flow_root,spix_root,img_ext,**kwargs):
     rgb2lab = kwargs['rgb2lab']
     prop_nc = kwargs['prop_nc']
     prop_icov = kwargs['prop_icov']
+    overlap = kwargs['overlap']
     logging = kwargs['logging']
     nimgs = kwargs['nimgs']
     verbose = kwargs['verbose']
@@ -78,7 +81,7 @@ def run_bin(vid_root,flow_root,spix_root,img_ext,**kwargs):
     vid_root,flow_root,spix_root = str(vid_root),str(flow_root),str(spix_root)
 
     # -- prepare command --
-    cmd = "%s -n %d -d %s/ -f %s/ -o %s/ --read_video %d --img_ext %s --sigma_app %2.5f --potts %2.2f --alpha %2.3f --split_alpha %2.3f --tgt_nspix %d --gamma %2.2f --epsilon_reid %1.8f --epsilon_new %1.8f --prop_nc %d --prop_icov %d --logging %d --nimgs %d --save_only_spix %d" % (bist_bin,sp_size,vid_root,flow_root,spix_root,read_video,img_ext,sigma_app,potts,alpha,split_alpha,tgt_nspix,gamma,epsilon_reid,epsilon_new,prop_nc,prop_icov,logging,nimgs,save_only_spix)
+    cmd = "%s -n %d -d %s/ -f %s/ -o %s/ --read_video %d --img_ext %s --sigma_app %2.5f --potts %2.2f --alpha %2.3f --split_alpha %2.3f --tgt_nspix %d --gamma %2.2f --epsilon_reid %1.8f --epsilon_new %1.8f --prop_nc %d --prop_icov %d --overlap %d --logging %d --nimgs %d --save_only_spix %d" % (bist_bin,sp_size,vid_root,flow_root,spix_root,read_video,img_ext,sigma_app,potts,alpha,split_alpha,tgt_nspix,gamma,epsilon_reid,epsilon_new,prop_nc,prop_icov,overlap,logging,nimgs,save_only_spix)
 
     # -- run binary --
     print(cmd)
@@ -87,14 +90,33 @@ def run_bin(vid_root,flow_root,spix_root,img_ext,**kwargs):
     output = subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout
     return output
 
+def smloop(img,init_spix,**kwargs):
+    # -- unpack --
+    defaults = default_params()
+    kwargs = extract(kwargs,defaults)
+    sp_size = kwargs['sp_size']
+    niters = kwargs['niters'] if 'niters' in kwargs else sp_size
+    sigma_app = kwargs['sigma_app']
+    potts = kwargs['potts']
+    alpha = kwargs['alpha']
+    split_alpha = kwargs['split_alpha']
+    rgb2lab = kwargs['rgb2lab']
+
+    # -- run --
+    fxn = bin.bist_cuda.smloop
+    spix = fxn(img,init_spix,niters,sp_size,sigma_app,potts,alpha,split_alpha,rgb2lab)
+    return spix
+
+
 def default_params():
     defaults = {"sp_size":25,"niters":-1,"potts":10.0,"sigma_app":0.009,
                 "alpha":math.log(0.5),"gamma":4.0,
                 "epsilon_new":5e-2,"epsilon_reid":1e-6,
-                "prop_nc":1,"prop_icov":1,"split_alpha":0.0,
-                "logging":0,"target_nspix":0,"nimgs":0,
+                "prop_nc":1,"prop_icov":1,"overlap":1,
+                "split_alpha":0.0,"logging":0,
+                "target_nspix":0,"nimgs":0,
                 "video_mode":True,"rgb2lab":True,
-                "save_only_spix":True,"verbose":False,
+                "use_sm":True,"save_only_spix":True,"verbose":False,
                 "batch_mode":False,"use_sm":True,"sm_start":0}
     return defaults
 

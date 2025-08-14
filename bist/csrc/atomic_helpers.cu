@@ -113,6 +113,32 @@ __device__ void atomic_min_update_int(uint64_t* addr, int new_size, int new_id) 
 
 
 // Atomic compare-and-update
+__device__ void atomic_max_update_int(uint64_t* addr, int new_size, int new_id) {
+    uint64_t old = *addr;
+    // uint64_t new_value = _combine(new_size, new_id);
+    uint32_t new_size_32 = *reinterpret_cast<uint32_t*>(&new_size);
+    uint32_t new_id_32 = *reinterpret_cast<uint32_t*>(&new_id);
+    uint64_t new_value = _combine(new_size_32,new_id_32);
+
+
+    while (true) {
+        // uint32_t old_size = _extract_size(old);
+        uint32_t old_size_32 = _extract_size(old);
+        int old_size = *reinterpret_cast<int*>(&old_size_32);
+        if (new_size > old_size) {
+          uint64_t prev = (uint64_t)atomicCAS((unsigned long long*)addr,
+                                              (unsigned long long)old,
+                                              (unsigned long long)new_value);
+          if (prev == old) break; // Success
+          old = prev;             // Retry with updated value
+        } else {
+            break; // No update needed
+        }
+    }
+}
+
+
+// Atomic compare-and-update
 __device__ void atomic_min_update_float(uint64_t* addr, float new_size, int new_id) {
     uint64_t old = *addr;
     // uint64_t new_value = _combine((uint32_t)new_size, (uint32_t)new_id);
