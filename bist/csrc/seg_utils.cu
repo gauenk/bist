@@ -187,7 +187,7 @@ __global__  void find_border_pixels(const int* seg, bool* border, const int npix
            
     // bool check0 = (C == N) and (N == W) and (W == S);
     if ( (C!=N) || (C!=S) || (C!=E) || (C!=W) ){
-            border[idx]=1;  
+        border[idx]=1;  
     }
 
 

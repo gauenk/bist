@@ -9,16 +9,20 @@
            Compute Posterior Mode
 
 ************************************************/
+
+
+
+
 __host__ void update_params(const float* img, const int* spix,
                             spix_params* sp_params,spix_helper* sp_helper,
                             float sigma2_app, const int npixels,
                             const int sp_size, const int nspix_buffer,
                             const int nbatch, const int width,
                             const int nftrs, bool prop_flag){
-
+    
   	dim3 ThreadPerBlock(THREADS_PER_BLOCK,1);
     int num_block1 = ceil( double(npixels) / double(THREADS_PER_BLOCK) ); 
-	int num_block2 = ceil( double(nspix_buffer) / double(THREADS_PER_BLOCK) );
+	  int num_block2 = ceil( double(nspix_buffer) / double(THREADS_PER_BLOCK) );
     dim3 BlockPerGrid1(num_block1,nbatch);
     dim3 BlockPerGrid2(num_block2,nbatch);
     clear_fields<<<BlockPerGrid2,ThreadPerBlock>>>(sp_params,sp_helper,
@@ -29,6 +33,9 @@ __host__ void update_params(const float* img, const int* spix,
     calc_simple_update<<<BlockPerGrid2,ThreadPerBlock>>>(sp_params,sp_helper,
                                                          sigma2_app, sp_size,
                                                          nspix_buffer, prop_flag);
+    gpuErrchk( cudaPeekAtLastError() );
+    gpuErrchk( cudaDeviceSynchronize() );
+
 }
 
 
@@ -60,7 +67,7 @@ __host__ void update_params_summ(const float* img, const int* spix,
                                  float sigma_app, const int npixels,
                                  const int nspix_buffer, const int nbatch,
                                  const int width, const int nftrs){
-
+                                  
   	dim3 ThreadPerBlock(THREADS_PER_BLOCK,1);
     int num_block1 = ceil( double(npixels) / double(THREADS_PER_BLOCK) ); 
 	  int num_block2 = ceil( double(nspix_buffer) / double(THREADS_PER_BLOCK) );
@@ -68,7 +75,7 @@ __host__ void update_params_summ(const float* img, const int* spix,
     dim3 BlockPerGrid2(num_block2,nbatch);
     clear_fields<<<BlockPerGrid2,ThreadPerBlock>>>(sp_params,sp_helper,
                                                    nspix_buffer,nftrs);
-    cudaMemset(sp_helper, 0, nspix_buffer*sizeof(spix_helper));
+    cudaMemset(sp_helper, 0, nbatch*nspix_buffer*sizeof(spix_helper));
     sum_by_label<<<BlockPerGrid1,ThreadPerBlock>>>(img,spix,sp_params,sp_helper,
                                                    npixels,nbatch,width,nftrs,nspix_buffer);
     calc_summ_stats<<<BlockPerGrid2,ThreadPerBlock>>>(sp_params,sp_helper,
@@ -122,15 +129,16 @@ void sum_by_label(const float* img, const int* spix,
     if (t>=npixels) return;
     // --> get the label
     int batch_ix = blockIdx.y;
+    int _t = t;
     t = t + npixels*batch_ix;
 
     int k = spix[t];
     if (k < 0){ return; } // invalid label
-    int label_offset = nspix_buffer * batch_ix;
-    k = k + label_offset;
-    // if (sp_params[k].valid != 1){
-    //   printf("invalid, living spix id %d\n",k);
-    // }
+    int _k  = k;
+    k = k + nspix_buffer * batch_ix;
+    if (sp_params[k].valid != 1){
+      printf("invalid but living spix[(%d,%d) or %d] %d %d\n",batch_ix,_t,t,_k,k);
+    }
     assert(sp_params[k].valid==1);
 
     const float* _img = img+3*t;
@@ -147,8 +155,8 @@ void sum_by_label(const float* img, const int* spix,
 	// atomicAdd(&sp_helper[k].sq_sum_app.y, pix.y*pix.y);
 	// atomicAdd(&sp_helper[k].sq_sum_app.z, pix.z*pix.z);
 
-	int x = t % width;
-	int y = t / width; 
+	int x = _t % width;
+	int y = _t / width; 
 	atomicAdd((unsigned long long *)&sp_helper[k].sum_shape.x, x);
 	atomicAdd((unsigned long long *)&sp_helper[k].sum_shape.y, y);
     atomicAdd((unsigned long long *)&sp_helper[k].sq_sum_shape.x, x*x);
@@ -255,18 +263,19 @@ void calc_simple_update(spix_params*  sp_params,spix_helper* sp_helper,
     // -- update thread --
 	int k = threadIdx.x + blockIdx.x * blockDim.x; // the label
 	if (k>=nsuperpixel_buffer) return;
+  k = k + nsuperpixel_buffer*blockIdx.y;
 	if (sp_params[k].valid == 0) return;
-	k = k + nsuperpixel_buffer*blockIdx.y;
+
     
-    // -- read curr --
+  // -- read curr --
 	int count_int = sp_params[k].count;
 	float pc = sp_params[k].prior_count; 
 	float prior_sigma_s_2 = pc * pc;
 	// float prior_sigma_s_2 = pc * sp_size;
 	double count = count_int * 1.0;
-    double2 mu_shape;
-    float3 mu_app;
-    double3 sigma_shape;
+  double2 mu_shape;
+  float3 mu_app;
+  double3 sigma_shape;
 	// double total_count = (double) count_int + pc;
 	// double total_count = (double) count_int + pc*50;
 	double total_count = (double) count_int + pc*50;
@@ -307,7 +316,7 @@ void calc_simple_update(spix_params*  sp_params,spix_helper* sp_helper,
       pr_det = prior_icov.x * prior_icov.z  - \
         prior_icov.y * prior_icov.y;
       if (pr_det <= 0){
-        printf("[%d]: (%2.3lf,%2.3lf,%2.3lf)\n",prior_icov.x,prior_icov.y,prior_icov.z);
+        printf("[%d]: (%2.3lf,%2.3lf,%2.3lf)\n",k,prior_icov.x,prior_icov.y,prior_icov.z);
         assert(pr_det>0);
       }
       pr_det_raw = pr_det;
@@ -321,7 +330,7 @@ void calc_simple_update(spix_params*  sp_params,spix_helper* sp_helper,
       pr_det = prior_icov.x * prior_icov.z  - \
         prior_icov.y * prior_icov.y;
       if (pr_det <= 0){
-        printf("[%d]: (%2.3lf,%2.3lf,%2.3lf)\n",prior_icov.x,prior_icov.y,prior_icov.z);
+        printf("[%d]: (%2.3lf,%2.3lf,%2.3lf)\n",k,prior_icov.x,prior_icov.y,prior_icov.z);
         assert(pr_det>0);
       }
       pr_det_raw = pr_det;
@@ -596,6 +605,7 @@ void store_sample_sigma_shape_k(spix_params*  sp_params,spix_helper* sp_helper,
     // -- update thread --
 	int k = threadIdx.x + blockIdx.x * blockDim.x; // the label
 	if (k>=nsuperpixel_buffer) return;
+  k = k + nsuperpixel_buffer*blockIdx.y; // batch dimension
 	if (sp_params[k].valid == 0) return;
 
     // -- unpack --

@@ -89,7 +89,7 @@ extract_unique_ids_batch_cub(int* spix, thrust::device_vector<int>& prev_nspix, 
          filtered_ids_ptr = thrust::raw_pointer_cast(filtered_ids.data()),
          nspix_ptr = thrust::raw_pointer_cast(nspix.data()),
          new_nspix_ptr = thrust::raw_pointer_cast(new_nspix.data()),
-         nspix_max] __device__(int global_idx) {
+         nspix_max,npix] __device__(int global_idx) {
             
             // global_index access each pixel across the BxHxW superpixel maps
             int batch_id = global_idx / nspix_max;
@@ -99,7 +99,7 @@ extract_unique_ids_batch_cub(int* spix, thrust::device_vector<int>& prev_nspix, 
             if (uniq_index >= _nspix ) return; // Skip if index out of bounds
 
             // read unique spix id and previous nspix for this batch
-            int spix_id = unique_spix_ptr[uniq_index];
+            int spix_id = unique_spix_ptr[uniq_index+batch_id*npix];
             int _prev_nspix = prev_nspix_ptr[batch_id];
             if (spix_id < _prev_nspix) return; // Skip old/invalid IDs; already compacted
 
@@ -349,10 +349,10 @@ void compact_new_spix_b(int* spix, int* compression_map, int* prop_ids,
   // -- update to compact index if "new" --
   // int shift_ix = spix_id - prev_nspix;
   for (int jx=0; jx < num_new; jx++){
-    if (spix_id == prop_ids[jx]){
+    if (spix_id == prop_ids[jx+spix_offset]){ // prop_ids[jx+spix_offset] is the new id
       int new_spix_id = jx+_prev_nspix;
       spix[ix] = jx+_prev_nspix; // update to "index" within "prop_ids" offset by prev max
-      compression_map[jx] = spix_id; // for updating spix_params
+      compression_map[jx+spix_offset] = spix_id; // for updating spix_params
       break;
     }
   }
@@ -360,8 +360,8 @@ void compact_new_spix_b(int* spix, int* compression_map, int* prop_ids,
 
 __global__ 
 void fill_new_params_from_old_b(spix_params* params, spix_params*  new_params,
-                                int* compression_map, int* num_new_nspix, int* csum_new_nspix,
-                                int nspix_buffer){
+                                int* compression_map, int* num_new_nspix, 
+                                int* csum_new_nspix, int nspix_buffer){
 
   // -- indexing new superpixel labels --
   int dest_ix = threadIdx.x + blockIdx.x * blockDim.x;

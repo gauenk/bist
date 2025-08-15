@@ -39,16 +39,14 @@ void update_seg_subset(float* img, int* seg, bool* border,
     if (pix_idx>=npix)  return;
     // todo; add batch info here.
     int batch_ix = blockIdx.y;
-    pix_idx = pix_idx + npix*batch_ix;
     int label_offset = nspix_buffer*batch_ix;
-    int idx = pix_idx; // im lazy
-
 
     int x = pix_idx % width;  
     if (x % 2 != xmod3) return;
     int y = pix_idx / width;   
     if (y % 2 != ymod3) return;
-    
+
+    pix_idx = pix_idx + npix*batch_ix;
     if (border[pix_idx]==0) return;
     // strides of 2*2
 
@@ -82,17 +80,17 @@ void update_seg_subset(float* img, int* seg, bool* border,
 
     // --> north, south, east, west <--
     int N = -1, S = -1, E = -1, W = -1;
-    if (x>0){ W = __ldg(&seg[idx-1]); } // left
-    if (y>0){ N = __ldg(&seg[idx-width]); }// top
-    if (x<(width-1)){ E = __ldg(&seg[idx+1]); } // right
-    if (y<(height-1)){ S = __ldg(&seg[idx+width]); } // below
+    if (x>0){ W = __ldg(&seg[pix_idx-1]); } // left
+    if (y>0){ N = __ldg(&seg[pix_idx-width]); }// top
+    if (x<(width-1)){ E = __ldg(&seg[pix_idx+1]); } // right
+    if (y<(height-1)){ S = __ldg(&seg[pix_idx+width]); } // below
 
     // --> diags [north (east, west), south (east, west)] <--
     int NE = -1, NW = -1, SE = -1, SW = -1;
-    if ((y>0) and (x<(width-1))){ NE = __ldg(&seg[idx-width+1]); } // top-right
-    if ((y>0) and (x>0)){  NW = __ldg(&seg[idx-width-1]); } // top-left
-    if ((x<(width-1)) and (y<(height-1))){SE = __ldg(&seg[idx+width+1]); } // btm-right
-    if ((x>0) and (y<(height-1))){ SW = __ldg(&seg[idx+width-1]); } // btm-left
+    if ((y>0) and (x<(width-1))){ NE = __ldg(&seg[pix_idx-width+1]); } // top-right
+    if ((y>0) and (x>0)){  NW = __ldg(&seg[pix_idx-width-1]); } // top-left
+    if ((x<(width-1)) and (y<(height-1))){SE = __ldg(&seg[pix_idx+width+1]); } // btm-right
+    if ((x>0) and (y<(height-1))){ SW = __ldg(&seg[pix_idx+width-1]); } // btm-left
 
     // -- read superpixel labels --
     // int NW =__ldg(&seg[pix_idx-width-1]);
@@ -141,7 +139,7 @@ void update_seg_subset(float* img, int* seg, bool* border,
     // printf("idx: %d\n",pix_idx);
 
     // -- index image --
-    float* imgC = img + idx * 3;
+    float* imgC = img + pix_idx * 3;
 
     // -- compute posterior --
     bool valid = N >= 0;
@@ -174,9 +172,9 @@ void update_seg_subset(float* img, int* seg, bool* border,
                            label_check,sigma2_app,count_diff_nbrs_E,potts,res_max);
     
     // printf("[b] idx: %d\n",pix_idx);
-
     int count_C = sp_params[C+label_offset].count;
     if ((count_C <= 2) and (res_max.y == C)){
+      //printf("edge case! [%d] %d %d \n",batch_ix,C,sp_params[C+label_offset].count);
       if (N>=0){ res_max.y = N;}
       else if(E>=0){ res_max.y = E;}
       else if(S>=0){ res_max.y = S;}
@@ -196,8 +194,8 @@ void update_seg_subset(float* img, int* seg, bool* border,
 __device__ float2 calc_joint(float* imgC, int* seg,
                              int width_index, int height_index,
                              spix_params* sp_params,
-			     int seg_label, int seg_index,
-			     float sigma2_app,  float neigh_neq,
+			                       int seg_index, int seg_label,
+			                       float sigma2_app,  float neigh_neq,
                              float beta, float2 res_max){
 
     // -- init res --
@@ -285,7 +283,7 @@ __host__ void update_seg(float* img, int* seg, bool* border,
                          spix_params* sp_params, const int niters,
                          const float sigma2_app, const float potts,
                          const int npix, int nspix_buffer,
-			 int nbatch, int width, int height, int nftrs,
+			                   int nbatch, int width, int height, int nftrs,
                          Logger* logger){
     
     // printf("npix, nbatch, width, height, nftrs: %d,%d,%d,%d,%d\n",
@@ -296,7 +294,7 @@ __host__ void update_seg(float* img, int* seg, bool* border,
     dim3 BlockPerGrid(num_block,nbatch);
     // assert(nbatch==1);
     for (int iter = 0 ; iter < niters; iter++){
-        cudaMemset(border, 0, npix*sizeof(bool));
+        cudaMemset(border, 0, nbatch*npix*sizeof(bool));
         find_border_pixels<<<BlockPerGrid,ThreadPerBlock>>>(seg,border,npix,width,height);
 
         // auto opt_b = torch::TensorOptions().dtype(torch::kBool).device(torch::kCUDA);
@@ -307,16 +305,16 @@ __host__ void update_seg(float* img, int* seg, bool* border,
             for (int ymod3 = 0; ymod3 <2; ymod3++){
                 update_seg_subset<<<BlockPerGrid,ThreadPerBlock>>>(img, seg, \
                      border, sp_params, sigma2_app, potts,\
-                     npix, nbatch, width, height, nftrs, xmod3, ymod3);
-		gpuErrchk( cudaPeekAtLastError() );
-		gpuErrchk( cudaDeviceSynchronize() );
+                     npix, nspix_buffer, width, height, nftrs, xmod3, ymod3);
+                  gpuErrchk( cudaPeekAtLastError() );
+                  gpuErrchk( cudaDeviceSynchronize() );
                 if (logger!=nullptr){
                   logger->boundary_update(seg);
                 }
             }
         }
     }
-    cudaMemset(border, 0, npix*sizeof(bool));
+    cudaMemset(border, 0, nbatch*npix*sizeof(bool));
     find_border_pixels<<<BlockPerGrid,ThreadPerBlock>>>(seg, border, npix, width, height);
 }
 

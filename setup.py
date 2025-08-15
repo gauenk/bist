@@ -32,6 +32,7 @@ setup(
             "bist/csrc/init_sparams.cu",
             "bist/csrc/rgb2lab.cu",
             "bist/csrc/compact_spix.cu",
+            "bist/csrc/compact_spix_cub.cu",
             "bist/csrc/seg_utils.cu",
             "bist/csrc/update_params.cu",
             "bist/csrc/update_seg.cu",
@@ -48,7 +49,7 @@ setup(
             "bist/csrc/logger.cu",
             "bist/csrc/bass.cu",
             "bist/csrc/bist.cu",
-            "bist/csrc/smloop.cu",
+            # "bist/csrc/smloop.cu",
             # -- pybind --
             "bist/csrc/pybind.cpp",
         ],
@@ -56,5 +57,5 @@ setup(
         extra_compile_args={'cxx': ['-g','-w'],'nvcc': ['-w','--extended-lambda']},
         library_dirs=['bin'],),
     ],
-    cmdclass={'build_ext': BuildExtension},
+    cmdclass={'build_ext': BuildExtension.with_options(use_ninja=True)},
 )

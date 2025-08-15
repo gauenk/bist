@@ -32,11 +32,9 @@ def run(vid,flows,**kwargs):
     split_alpha = kwargs['split_alpha']
     target_nspix = kwargs['target_nspix']
     video_mode = kwargs['video_mode']
-    use_sm = kwargs['use_sm']
     rgb2lab = kwargs['rgb2lab']
-    sm_start = kwargs['sm_start']
+    # sm_start = kwargs['sm_start']
     use_sm = kwargs['use_sm']
-    if use_sm is False: sm_start = 10*8
 
     # -- prep --
     assert vid.shape[-1] == 3,"Last Dimension Must be 3 Color Channels or 3 Features"
@@ -50,13 +48,34 @@ def run(vid,flows,**kwargs):
                video_mode,use_sm,rgb2lab)
     return spix
 
-def run_bin(vid_root,flow_root,spix_root,img_ext,**kwargs):
+
+
+def run_batched(vid,**kwargs):
 
     # -- unpack --
     defaults = default_params()
     kwargs = extract(kwargs,defaults)
     sp_size = kwargs['sp_size']
     niters = kwargs['niters'] if 'niters' in kwargs else sp_size
+    potts = kwargs['potts']
+    sigma_app = kwargs['sigma_app']
+    rgb2lab = kwargs['rgb2lab']
+
+    # -- prep --
+    assert vid.shape[-1] == 3,"Last Dimension Must be 3 Color Channels or 3 Features"
+
+    # -- run --
+    # print("niters: ",niters)
+    fxn = bin.bist_cuda.batched_bass
+    spix = fxn(vid,niters,sp_size,potts,sigma_app,rgb2lab)
+    return spix
+
+def run_bin(vid_root,flow_root,spix_root,img_ext,**kwargs):
+
+    # -- unpack --
+    defaults = default_params()
+    kwargs = extract(kwargs,defaults)
+    sp_size = kwargs['sp_size']
     potts = kwargs['potts']
     sigma_app = kwargs['sigma_app']
     alpha = kwargs['alpha']
@@ -69,6 +88,8 @@ def run_bin(vid_root,flow_root,spix_root,img_ext,**kwargs):
     rgb2lab = kwargs['rgb2lab']
     prop_nc = kwargs['prop_nc']
     prop_icov = kwargs['prop_icov']
+    niters = kwargs['niters'] if 'niters' in kwargs else sp_size
+    use_sm = kwargs['use_sm']
     overlap = kwargs['overlap']
     logging = kwargs['logging']
     nimgs = kwargs['nimgs']
@@ -81,7 +102,7 @@ def run_bin(vid_root,flow_root,spix_root,img_ext,**kwargs):
     vid_root,flow_root,spix_root = str(vid_root),str(flow_root),str(spix_root)
 
     # -- prepare command --
-    cmd = "%s -n %d -d %s/ -f %s/ -o %s/ --read_video %d --img_ext %s --sigma_app %2.5f --potts %2.2f --alpha %2.3f --split_alpha %2.3f --tgt_nspix %d --gamma %2.2f --epsilon_reid %1.8f --epsilon_new %1.8f --prop_nc %d --prop_icov %d --overlap %d --logging %d --nimgs %d --save_only_spix %d" % (bist_bin,sp_size,vid_root,flow_root,spix_root,read_video,img_ext,sigma_app,potts,alpha,split_alpha,tgt_nspix,gamma,epsilon_reid,epsilon_new,prop_nc,prop_icov,overlap,logging,nimgs,save_only_spix)
+    cmd = "%s -n %d -d %s/ -f %s/ -o %s/ --read_video %d --img_ext %s --sigma_app %2.5f --potts %2.2f --alpha %2.3f --split_alpha %2.3f --tgt_nspix %d --gamma %2.2f --epsilon_reid %1.8f --epsilon_new %1.8f --prop_nc %d --prop_icov %d --niters %d --use_sm %d --overlap %d --logging %d --nimgs %d --save_only_spix %d" % (bist_bin,sp_size,vid_root,flow_root,spix_root,read_video,img_ext,sigma_app,potts,alpha,split_alpha,tgt_nspix,gamma,epsilon_reid,epsilon_new,prop_nc,prop_icov,niters,use_sm,overlap,logging,nimgs,save_only_spix)
 
     # -- run binary --
     print(cmd)

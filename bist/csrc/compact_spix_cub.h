@@ -14,7 +14,6 @@ extract_unique_ids_batch_cub(
                                                    
 void compactify_new_superpixels_b(int* spix, spix_params* sp_params,
                             thrust::device_vector<int>& prop_ids,
-			                //thrust::device_vector<int>& nspix,
 			                thrust::device_vector<int>& new_nspix,
 			                thrust::device_vector<int>& prev_nspix,
                             int nbatch, int nspix_buffer, int npix);

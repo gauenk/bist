@@ -31,7 +31,7 @@ __host__ int init_seg(int* seg, int sp_size, int width, int height, int nbatch){
   // -- launch params --
   dim3 ThreadPerBlock(THREADS_PER_BLOCK,1);
   int nblocks_spix =  ceil(double(nspix) /double(THREADS_PER_BLOCK));
-  dim3 BlockPerGrid_spix(nblocks_spix,nbatch);
+  dim3 BlockPerGrid_spix(nblocks_spix);
   int nblocks_pix =  ceil(double(npix) /double(THREADS_PER_BLOCK));
   dim3 BlockPerGrid_pix(nblocks_pix,nbatch);
   double* centers;
@@ -48,6 +48,7 @@ __host__ int init_seg(int* seg, int sp_size, int width, int height, int nbatch){
 __global__ void InitHexCenter(double* centers, double H, double w, int nspix,
                               int max_num_sp_x, int xdim, int ydim){
 	int idx = threadIdx.x + blockIdx.x * blockDim.x; 
+  int npix = xdim * ydim;
 	if (idx >= nspix) return;
     int x = idx % max_num_sp_x; 
     int y = idx / max_num_sp_x; 
@@ -62,7 +63,8 @@ __global__ void InitHexCenter(double* centers, double H, double w, int nspix,
 
 __global__ void InitHexSeg(int* seg, double* centers,
                            int K, int npix, int xdim){
-	int idx = threadIdx.x + blockIdx.x * blockDim.x; 	
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+  int bi = blockIdx.y; 	
 	if (idx >= npix) return;
     int x = idx % xdim;
     int y = idx / xdim;   
@@ -74,7 +76,7 @@ __global__ void InitHexSeg(int* seg, double* centers,
         d2 = dx*dx + dy*dy;
         if ( d2 <= D2){
               D2 = d2;  
-              seg[idx]=j;
+              seg[idx+bi*npix]=j;
         }           
     } 
     return;	

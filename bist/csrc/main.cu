@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
     int nimgs = 0;
     int save_only_spix = 0;
     int _batch_mode = 0;
-    bool use_sm = true;
+    int _use_sm = 1;
 
     /******************************
 
@@ -91,6 +91,7 @@ int main(int argc, char **argv) {
             !parse_argument(i, argc, argv, arg, "--read_video", read_video) ||
             !parse_argument(i, argc, argv, arg, "--subdir", subdir) ||
             !parse_argument(i, argc, argv, arg, "--niters", input_niters) ||
+            !parse_argument(i, argc, argv, arg, "--use_sm", _use_sm) ||
             !parse_argument(i, argc, argv, arg, "--vid_niters", vid_niters) ||
             !parse_argument(i, argc, argv, arg, "--tgt_nspix", target_nspix) ||
             !parse_argument(i,argc,argv,arg,"--epsilon_reid",epsilon_reid) ||
@@ -127,6 +128,7 @@ int main(int argc, char **argv) {
     int nbatch = 1;
     int nftrs = 3;
     bool batch_mode = (_batch_mode == 1);
+    bool use_sm = (_use_sm == 1);
     bool controlled_nspix = (target_nspix > 0);
     int niters = (input_niters == 0) ? sp_size : input_niters;
     int niters_seg = 4;
@@ -141,6 +143,7 @@ int main(int argc, char **argv) {
     std::vector<string> img_files(_img_files.begin(), _img_files.begin() + std::min(nimgs, (int)_img_files.size()));
     printf("num files: %d\n",img_files.size());
     std::vector<std::vector<float>> flows = read_flows(fdirec, img_files.size());
+    printf("use_sm: %d\n",use_sm==true);  
 
     // -- loop init --
     float niters_ave = 0;
@@ -393,14 +396,14 @@ int main(int argc, char **argv) {
             save_spix_gpu(seg_idx_path, spix, height, width);
 
             // -- save pooled --
-            nspix = params->ids.size();
-            auto out = get_img_pooled(img_rgb, spix, height, width, nspix);
-            cv::Mat pooled_img = std::get<0>(out);
-            float* pooled_img_ptr = std::get<1>(out);
-            cv::String fname_res_pooled=string(odirec)+subdir+"pooled_"+img_number+".png";
-            if (not save_only_spix){
-              imwrite(fname_res_pooled, pooled_img);
-            }
+            // nspix = params->ids.size();
+            // auto out = get_img_pooled(img_rgb, spix, height, width, nspix);
+            // cv::Mat pooled_img = std::get<0>(out);
+            // float* pooled_img_ptr = std::get<1>(out);
+            // cv::String fname_res_pooled=string(odirec)+subdir+"pooled_"+img_number+".png";
+            // if (not save_only_spix){
+            //   imwrite(fname_res_pooled, pooled_img);
+            // }
 
             // -- residual image --
             // cv::Mat res_img = get_img_res(img_rgb, pooled_img_ptr, height, width);

@@ -69,9 +69,8 @@ __host__ int bass(float* img, int* seg, spix_params* sp_params, bool* border,
       std::cout << "target_nspix: " << target_nspix << std::endl;
       niters = 5000;
     }
-
     
-    // printf("niters: %d\n",niters);
+    //printf("niters: %d\n",niters);
     for (int idx = 0; idx < niters; idx++) {
 
 
@@ -296,6 +295,7 @@ run_bass(float* img, int nbatch, int height, int width, int nftrs,
 
     init_sp_params(sp_params,sigma2_app,img,_spix,sp_helper,
                    npix,nspix,nspix_buffer,nbatch,width,nftrs,sp_size);
+
     gpuErrchk( cudaPeekAtLastError() );
     gpuErrchk( cudaDeviceSynchronize() );
 
@@ -557,6 +557,7 @@ __host__ void batch_bass(float* img, int* seg,spix_params* sp_params,bool* borde
 
 ***********************************************************/
 
+
 std::tuple<int*,bool*,SuperpixelParams*>
 run_batched_bass(float* img, int nbatch, int height, int width, int nftrs,
 		            int niters, int niters_seg, int sm_start, int sp_size,
@@ -577,17 +578,24 @@ run_batched_bass(float* img, int nbatch, int height, int width, int nftrs,
     spix_helper* sp_helper=(spix_helper*)easy_allocate(nbatch*nspix_buffer,helper_size);
 
     // -- extract uniq ids --
-    thrust::device_vector<int> nspix(nbatch, nspix_init);
+    //thrust::device_vector<int> nspix(nbatch, nspix_init);
     thrust::device_vector<int> prev_nspix(nbatch, 0);
     auto [prop_ids0, new_nspix] = extract_unique_ids_batch_cub(_spix,prev_nspix,nbatch,npix);
-    {
-      thrust::device_vector<int> _nspix(nspix.size());
-      thrust::transform(new_nspix.begin(), new_nspix.end(),prev_nspix.begin(),_nspix.begin(),thrust::plus<int>());
-      bool check_eq = thrust::equal(nspix.begin(), nspix.end(), _nspix.begin());
-        if (!check_eq) {
-        printf("ERROR: nspix don't match\n");
-      }
-    }
+    thrust::device_vector<int> nspix(nbatch);
+    thrust::transform(new_nspix.begin(), new_nspix.end(),prev_nspix.begin(),nspix.begin(),thrust::plus<int>());
+    // bool check_eq = thrust::equal(nspix.begin(), nspix.end(), _nspix.begin());
+    //     if (!check_eq) {
+    //     printf("ERROR: nspix don't match\n");
+    //   }
+    // // Copy device vector to host
+    // thrust::host_vector<int> h_nspix = nspix;
+
+    // // Print the values
+    // for (int i = 0; i < h_nspix.size(); i++) {
+    //     std::cout << h_nspix[i] << " ";
+    // }
+    
+
     compactify_new_superpixels_b(_spix,sp_params,prop_ids0,new_nspix,prev_nspix,nbatch,nspix_buffer,npix);
     gpuErrchk( cudaPeekAtLastError() );
     gpuErrchk( cudaDeviceSynchronize() );
@@ -595,7 +603,7 @@ run_batched_bass(float* img, int nbatch, int height, int width, int nftrs,
     // -- allocate larger memory for prior map --
     int* sm_seg1 = (int*)easy_allocate(nbatch*npix,sizeof(int));
     int* sm_seg2 = (int*)easy_allocate(nbatch*npix,sizeof(int));
-    int* sm_pairs = (int*)easy_allocate(2*nbatch*npix,sizeof(int));
+    int* sm_pairs = (int*)easy_allocate(nbatch*npix*2,sizeof(int));
     const int sm_helper_size = sizeof(spix_helper_sm);
     spix_helper_sm* sm_helper=(spix_helper_sm*)easy_allocate(nbatch*nspix_buffer,sm_helper_size);
 
@@ -609,11 +617,12 @@ run_batched_bass(float* img, int nbatch, int height, int width, int nftrs,
     gpuErrchk( cudaDeviceSynchronize() );
     // printf("hey\n");
 
+    
     // -- init spix_params --
+    mark_active_contiguous_b(sp_params, nspix, nbatch, nspix_buffer, sp_size);
     //mark_active_contiguous(sp_params,nspix,nspix_buffer,sp_size);
     gpuErrchk( cudaPeekAtLastError() );
     gpuErrchk( cudaDeviceSynchronize() );
-
 
     // spix_params* sp_params, float prior_sigma_app,
     //                          float* img, int* spix, spix_helper* sp_helper,
@@ -621,6 +630,7 @@ run_batched_bass(float* img, int nbatch, int height, int width, int nftrs,
     //                          int nbatch, int width, int nftrs, int sp_size
     init_sp_params_b(sp_params,sigma2_app,img,_spix,sp_helper,
                      nspix,nspix_buffer,npix,nbatch,width,nftrs,sp_size);
+
     gpuErrchk( cudaPeekAtLastError() );
     gpuErrchk( cudaDeviceSynchronize() );
 
@@ -665,14 +675,28 @@ run_batched_bass(float* img, int nbatch, int height, int width, int nftrs,
 
     // -- extract uniq ids --
     auto [prop_ids, _new_nspix] = extract_unique_ids_batch_cub(_spix,prev_nspix,nbatch,npix);
-    {
-      thrust::device_vector<int> _nspix(nspix.size());
-      thrust::transform(_new_nspix.begin(), _new_nspix.end(),prev_nspix.begin(),_nspix.begin(),thrust::plus<int>());
-      bool check_eq = thrust::equal(nspix.begin(), nspix.end(), _nspix.begin());
-        if (!check_eq) {
-        printf("ERROR: nspix don't match\n");
-      }
-    }
+
+  // {
+  //   // Copy device vector to host
+  //   thrust::host_vector<int> h_nspix = _new_nspix;
+
+  //   // Print the values
+  //   std::cout << "New nspix: "; 
+  //   std::cout << h_nspix.size() << std::endl;
+  //   for (int i = 0; i < h_nspix.size(); i++) {
+  //       std::cout << h_nspix[i] << " ";
+  //   }
+  //   std::cout << std::endl;
+    
+  // }
+    // {
+    //   thrust::device_vector<int> _nspix(nspix.size());
+    //   thrust::transform(_new_nspix.begin(), _new_nspix.end(),prev_nspix.begin(),_nspix.begin(),thrust::plus<int>());
+    //   bool check_eq = thrust::equal(nspix.begin(), nspix.end(), _nspix.begin());
+    //     if (!check_eq) {
+    //     printf("ERROR: nspix don't match\n");
+    //   }
+    // }
     //assert(nspix == new_nspix + prev_nspix);
     compactify_new_superpixels_b(_spix,sp_params,prop_ids,_new_nspix,prev_nspix,nbatch,nspix_buffer,npix);
 

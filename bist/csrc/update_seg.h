@@ -21,10 +21,16 @@ void update_seg(float* img, int* seg, bool* border,
 		int nbatch, int width, int height, int nftrs,
 		Logger* logger=nullptr);
 
+// __device__ float2 calc_joint(float* imgC, int* seg,
+//                              int width_index, int height_index,
+//                              spix_params* sp_params,
+// 			     int seg_label, int seg_index,
+// 			     float sigma2_app,  float neigh_neq,
+//                              float beta, float2 res_max);
 __device__ float2 calc_joint(float* imgC, int* seg,
                              int width_index, int height_index,
                              spix_params* sp_params,
-			     int seg_label, int seg_index,
+			      int seg_index, int seg_label,
 			     float sigma2_app,  float neigh_neq,
                              float beta, float2 res_max);
 

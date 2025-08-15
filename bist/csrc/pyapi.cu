@@ -36,7 +36,7 @@
 #include "shift_labels.h"
 
 // -- multiscale --
-#include "smloop.h"
+//#include "smloop.h"
 
 
 // using namespace cv;
@@ -66,6 +66,7 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
   // int sm_start = 0;
   float sigma2_size = 0.0;
   float sigma2_app = sigma_app * sigma_app;
+  int sm_start = 0;
 
   // -- actually, not an input --
   int niters_seg = 4;
@@ -234,6 +235,92 @@ bist_forward_cuda(const torch::Tensor vid, const torch::Tensor flows,
 
 
 
+// // a batched version of bass without split-merges --
+// torch::Tensor
+// batched_bass_cuda(const torch::Tensor vid,
+//                   int niters, int sp_size, float potts,
+//                   float sigma_app, bool rgb2lab_b){
+
+//   // -- check --
+//   CHECK_INPUT(vid);
+
+//   // -- unpack shape --
+//   int nbatch = vid.size(0);
+//   int height = vid.size(1);
+//   int width = vid.size(2);
+//   int nftrs = vid.size(3);
+//   int npix = height*width;
+//   int target_nspix = -1;
+
+//   // -- silly defaults; unused since no split/merge --
+//    float alpha = 1.0;
+//    float gamma = 1.0;
+//    float epsilon_new = 1.0;
+//    float epsilon_reid = 1.0;
+//    float split_alpha = 1.0;
+
+//   // -- legacy --
+//   int sm_start = 1000000; // no split/merge for now
+//   float sigma2_size = 0.0;
+//   float sigma2_app = sigma_app * sigma_app;
+
+//   // -- actually, not an input --
+//   int niters_seg = 4;
+//   // float split_alpha = 0.0;
+//   float merge_alpha = 0.0;
+
+//   // -- alloc options --
+//   auto options_f32 = torch::TensorOptions().dtype(torch::kFloat32)
+//     .layout(torch::kStrided).device(vid.device());
+//   auto options_i32 = torch::TensorOptions().dtype(torch::kInt32)
+//     .layout(torch::kStrided).device(vid.device());
+
+//   // -- allocate spix --
+//   // torch::Tensor spix_th = torch::zeros({nbatch, height, width}, options_i32);
+
+//   // -- init --
+//   float* img_rgb = vid.data_ptr<float>();
+//   float* img_lab = nullptr;
+
+//   if (rgb2lab_b) {
+//       img_lab = (float*)easy_allocate(nbatch*npix*3,sizeof(float));
+//       rgb2lab(img_rgb,img_lab,nbatch,npix); // convert image to LAB
+//   }else {
+//       img_lab = img_rgb;
+//       // cudaMemcpy(img_lab,img_rgb,npix*3,cudaMemcpyDeviceToDevice);
+//   }
+
+
+//    // -- single image --
+//    // std::tuple<int*,bool*,SuperpixelParams*>
+//    // run_batched_bass(float* img, int nbatch, int height, int width, int nftrs,
+//    // 		 int niters, int niters_seg, int sm_start, int sp_size,
+//    // 		 float sigma2_app, float sigma2_size, float potts,
+//    // 		 float alpha_hastings, float split_alpha, int target_nspix,Logger* logger);
+//    auto out = run_batched_bass(img_lab, nbatch, height, width, nftrs,
+//                        niters, niters_seg, sm_start,
+//                        sp_size,sigma2_app,sigma2_size,
+//                        potts,alpha,split_alpha,target_nspix);
+//    int* spix = std::get<0>(out);
+//    bool* border = std::get<1>(out);
+//    SuperpixelParams* params = std::get<2>(out);
+
+//    // -- fill --
+//    torch::Tensor spix_th = torch::from_blob(spix, {nbatch, height, width}, options_i32);
+
+//    // -- free data --
+//    cudaFree(border);
+//    cudaFree(params);
+
+//   if (rgb2lab_b) {
+//    cudaFree(img_lab);
+//   }
+
+//    return spix_th;
+// }
+
+
+
 // a batched version of bass without split-merges --
 torch::Tensor
 batched_bass_cuda(const torch::Tensor vid,
@@ -320,177 +407,91 @@ batched_bass_cuda(const torch::Tensor vid,
 
 
 
-// a batched version of bass without split-merges --
-torch::Tensor
-batched_bass_cuda(const torch::Tensor vid,
-                  int niters, int sp_size, float potts,
-                  float sigma_app, bool rgb2lab_b){
 
-  // -- check --
-  CHECK_INPUT(vid);
-
-  // -- unpack shape --
-  int nbatch = vid.size(0);
-  int height = vid.size(1);
-  int width = vid.size(2);
-  int nftrs = vid.size(3);
-  int npix = height*width;
-  int target_nspix = -1;
-
-  // -- silly defaults; unused since no split/merge --
-   float alpha = 1.0;
-   float gamma = 1.0;
-   float epsilon_new = 1.0;
-   float epsilon_reid = 1.0;
-   float split_alpha = 1.0;
-
-  // -- legacy --
-  int sm_start = 1000000; // no split/merge for now
-  float sigma2_size = 0.0;
-  float sigma2_app = sigma_app * sigma_app;
-
-  // -- actually, not an input --
-  int niters_seg = 4;
-  // float split_alpha = 0.0;
-  float merge_alpha = 0.0;
-
-  // -- alloc options --
-  auto options_f32 = torch::TensorOptions().dtype(torch::kFloat32)
-    .layout(torch::kStrided).device(vid.device());
-  auto options_i32 = torch::TensorOptions().dtype(torch::kInt32)
-    .layout(torch::kStrided).device(vid.device());
-
-  // -- allocate spix --
-  // torch::Tensor spix_th = torch::zeros({nbatch, height, width}, options_i32);
-
-  // -- init --
-  float* img_rgb = vid.data_ptr<float>();
-  float* img_lab = nullptr;
-
-  if (rgb2lab_b) {
-      img_lab = (float*)easy_allocate(nbatch*npix*3,sizeof(float));
-      rgb2lab(img_rgb,img_lab,nbatch,npix); // convert image to LAB
-  }else {
-      img_lab = img_rgb;
-      // cudaMemcpy(img_lab,img_rgb,npix*3,cudaMemcpyDeviceToDevice);
-  }
+// torch::Tensor smloop_loop(torch::Tensor img, torch::Tensor init_spix,
+//                           int niters, int sp_size, float sigma_app,
+//                           float potts, float alpha, float split_alpha, bool rgb2lab_b){
 
 
-   // -- single image --
-   // std::tuple<int*,bool*,SuperpixelParams*>
-   // run_batched_bass(float* img, int nbatch, int height, int width, int nftrs,
-   // 		 int niters, int niters_seg, int sm_start, int sp_size,
-   // 		 float sigma2_app, float sigma2_size, float potts,
-   // 		 float alpha_hastings, float split_alpha, int target_nspix,Logger* logger);
-   auto out = run_batched_bass(img_lab, nbatch, height, width, nftrs,
-                       niters, niters_seg, sm_start,
-                       sp_size,sigma2_app,sigma2_size,
-                       potts,alpha,split_alpha,target_nspix);
-   int* spix = std::get<0>(out);
-   bool* border = std::get<1>(out);
-   SuperpixelParams* params = std::get<2>(out);
+//   // -- unpack shape --
+//   int nbatch = img.size(0);
+//   int height = img.size(1);
+//   int width = img.size(2);
+//   int nftrs = img.size(3);
+//   int npix = height*width;
+//   assert(nftrs==3);
+//   assert(init_spix.size(0)==nbatch);
+//   assert(init_spix.size(1)==height);
+//   assert(init_spix.size(2)==width);
 
-   // -- fill --
-   torch::Tensor spix_th = torch::from_blob(spix, {nbatch, height, width}, options_i32);
+//   // -- legacy --
+//   int sm_start = 0;
+//   float sigma2_size = 0.0;
+//   float sigma2_app = sigma_app * sigma_app;
+//   float gamma = 0.0;
+//   float epsilon_new = 0.0;
+//   float epsilon_reid = 0.0;
+//   int target_nspix = 0;
+//   bool video_mode = false;
 
-   // -- free data --
-   cudaFree(border);
-   cudaFree(params);
+//   // -- actually, not an input --
+//   int niters_seg = 4;
+//   float merge_alpha = 0.0;
 
-  if (rgb2lab_b) {
-   cudaFree(img_lab);
-  }
+//   // -- alloc options --
+//   auto options_f32 = torch::TensorOptions().dtype(torch::kFloat32)
+//     .layout(torch::kStrided).device(img.device());
+//   auto options_i32 = torch::TensorOptions().dtype(torch::kInt32)
+//     .layout(torch::kStrided).device(img.device());
 
-   return spix_th;
-}
+//   // -- unpack pointers --
+//   int init_nspix = init_spix.max().item<int>()+1;
+//   int* init_spix_ptr = init_spix.data_ptr<int>();
+//   float* img_rgb = img.data_ptr<float>();
 
+//   // -- info --
+//   printf("init_nspix: %d\n",init_nspix);
+//   printf("niters: %d\n",niters);
 
+//   // -- rgb -> lab --
+//   float* img_lab = (float*)easy_allocate(npix*3,sizeof(float));
+//   if (rgb2lab_b) {
+//     rgb2lab(img_rgb,img_lab,nbatch,npix); // convert image to LAB
+//   }else {
+//     cudaMemcpy(img_lab,img_rgb,npix*3,cudaMemcpyDeviceToDevice);
+//   }
 
+//   // -- propogate --
+//   int* spix = run_smloop(img_lab, init_spix_ptr, init_nspix,
+//                          nbatch, height, width, nftrs,
+//                          niters, sp_size,sigma2_app,
+//                          potts, alpha, merge_alpha, split_alpha);
 
-torch::Tensor smloop_loop(torch::Tensor img, torch::Tensor init_spix,
-                          int niters, int sp_size, float sigma_app,
-                          float potts, float alpha, float split_alpha, bool rgb2lab_b){
+//   // -- fill --
+//   torch::Tensor spix_th = torch::from_blob(spix, {nbatch, height, width}, options_i32);
 
+//   // -- free data --
+//   cudaFree(img_lab);
 
-  // -- unpack shape --
-  int nbatch = img.size(0);
-  int height = img.size(1);
-  int width = img.size(2);
-  int nftrs = img.size(3);
-  int npix = height*width;
-  assert(nftrs==3);
-  assert(init_spix.size(0)==nbatch);
-  assert(init_spix.size(1)==height);
-  assert(init_spix.size(2)==width);
-
-  // -- legacy --
-  int sm_start = 0;
-  float sigma2_size = 0.0;
-  float sigma2_app = sigma_app * sigma_app;
-  float gamma = 0.0;
-  float epsilon_new = 0.0;
-  float epsilon_reid = 0.0;
-  int target_nspix = 0;
-  bool video_mode = false;
-
-  // -- actually, not an input --
-  int niters_seg = 4;
-  float merge_alpha = 0.0;
-
-  // -- alloc options --
-  auto options_f32 = torch::TensorOptions().dtype(torch::kFloat32)
-    .layout(torch::kStrided).device(img.device());
-  auto options_i32 = torch::TensorOptions().dtype(torch::kInt32)
-    .layout(torch::kStrided).device(img.device());
-
-  // -- unpack pointers --
-  int init_nspix = init_spix.max().item<int>()+1;
-  int* init_spix_ptr = init_spix.data_ptr<int>();
-  float* img_rgb = img.data_ptr<float>();
-
-  // -- info --
-  printf("init_nspix: %d\n",init_nspix);
-  printf("niters: %d\n",niters);
-
-  // -- rgb -> lab --
-  float* img_lab = (float*)easy_allocate(npix*3,sizeof(float));
-  if (rgb2lab_b) {
-    rgb2lab(img_rgb,img_lab,nbatch,npix); // convert image to LAB
-  }else {
-    cudaMemcpy(img_lab,img_rgb,npix*3,cudaMemcpyDeviceToDevice);
-  }
-
-  // -- propogate --
-  int* spix = run_smloop(img_lab, init_spix_ptr, init_nspix,
-                         nbatch, height, width, nftrs,
-                         niters, sp_size,sigma2_app,
-                         potts, alpha, merge_alpha, split_alpha);
-
-  // -- fill --
-  torch::Tensor spix_th = torch::from_blob(spix, {nbatch, height, width}, options_i32);
-
-  // -- free data --
-  cudaFree(img_lab);
-
-  return spix_th;
-}
+//   return spix_th;
+// }
 
 
-// std::tuple<torch::Tensor,torch::Tensor>
-torch::Tensor
-bist_smloop_cuda(const torch::Tensor img, const torch::Tensor init_spix,
-                 int niters, int sp_size, float sigma_app, float potts,
-                 float alpha, float split_alpha, bool rgb2lab_b){
+// // std::tuple<torch::Tensor,torch::Tensor>
+// torch::Tensor
+// bist_smloop_cuda(const torch::Tensor img, const torch::Tensor init_spix,
+//                  int niters, int sp_size, float sigma_app, float potts,
+//                  float alpha, float split_alpha, bool rgb2lab_b){
 
-  // -- check --
-  CHECK_INPUT(img);
-  CHECK_INPUT(init_spix);
+//   // -- check --
+//   CHECK_INPUT(img);
+//   CHECK_INPUT(init_spix);
 
-  auto spix = smloop_loop(img, init_spix, niters,  sp_size,
-                          sigma_app, potts, alpha, split_alpha, rgb2lab_b);
+//   auto spix = smloop_loop(img, init_spix, niters,  sp_size,
+//                           sigma_app, potts, alpha, split_alpha, rgb2lab_b);
 
-  return spix;
-}
+//   return spix;
+// }
 
 
 
@@ -688,7 +689,7 @@ run_downpooling_py(torch::Tensor video, torch::Tensor spix){
 
 void init_bist(py::module &m){
   m.def("run_bist", &bist_forward_cuda,"BIST");
-  m.def("smloop",&bist_smloop_cuda,"Split-Merge Loop.");
+  //m.def("smloop",&bist_smloop_cuda,"Split-Merge Loop.");
   m.def("get_marked_video", &get_marked_video,"get marked video");
   m.def("shift_labels", &run_shift_labels_py,"run shifted labels");
   m.def("downpool",&run_downpooling_py,"downsampled pooling layer.");
