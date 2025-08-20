@@ -29,14 +29,19 @@ __host__ void mark_active_contiguous(spix_params* params, int nspix,
 
 
 __global__ void mark_inactive_kernel_b(spix_params* params, int* nspix, int nspix_buffer, int sp_size);
-__global__ void mark_active_kernel_b(spix_params* params, int* ids, int *nspix, int nspix_buffer, int max_nspix);
-__host__ void mark_active_contiguous_b(spix_params* params, 
+__global__ void mark_active_kernel_b(spix_params* params, int* ids, int *nspix,
+                                     int nspix_buffer, int max_nspix);
+
+__host__ void mark_active_contiguous_b(spix_params* params,
                                       thrust::device_vector<int>& nspix,
                                       int nbatch, int nspix_buffer, int sp_size);
 __host__ void mark_active_b(spix_params* params,
                             thrust::device_vector<int>& ids,
                             thrust::device_vector<int>& nspix,
-                            int nbatch, int nspix_buffer, int sp_size);                                      
+                            int nbatch, int nspix_buffer, int sp_size);
+/* __global__ void mark_inactive_kernel_b(spix_params* params, int* nspix, int nspix_buffer, int sp_size); */
+/* __global__ void mark_active_kernel_b(spix_params* params, int* ids, int *nspix, */
+/*                                      int nspix_buffer, int max_nspix); */
 
 
 __host__ void init_sp_params(spix_params* sp_params, float prior_sigma_app,

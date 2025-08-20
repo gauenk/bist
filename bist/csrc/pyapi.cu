@@ -397,7 +397,9 @@ batched_bass_cuda(const torch::Tensor vid,
 
    // -- free data --
    cudaFree(border);
-   //cudaFree(params); // its a null ptr
+   if (params != nullptr) {
+     cudaFree(params);
+   }
 
   if (rgb2lab_b) {
    cudaFree(img_lab);
@@ -613,10 +615,9 @@ torch::Tensor run_shift_labels_py(torch::Tensor pix_labels, torch::Tensor spix,
   // -- copy to pytorch --
   auto options_i32 = torch::TensorOptions().dtype(torch::kInt32)
     .layout(torch::kStrided).device(pix_labels.device());
-  torch::Tensor shifted = torch::from_blob(shifted_ptr, {nbatch, height, width}, options_i32);
+  torch::Tensor shifted = torch::from_blob(shifted_ptr, {nbatch, height, width}, options_i32).clone();
+  cudaFree(shifted_ptr);
 
-  // -- free memory --
-  // cudaFree(shifted_ptr);
 
   return shifted;
 }

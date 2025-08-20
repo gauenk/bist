@@ -143,7 +143,7 @@ int main(int argc, char **argv) {
     std::vector<string> img_files(_img_files.begin(), _img_files.begin() + std::min(nimgs, (int)_img_files.size()));
     printf("num files: %d\n",img_files.size());
     std::vector<std::vector<float>> flows = read_flows(fdirec, img_files.size());
-    printf("use_sm: %d\n",use_sm==true);  
+    // printf("use_sm: %d\n",use_sm==true);  
 
     // -- loop init --
     float niters_ave = 0;

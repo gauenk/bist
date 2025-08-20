@@ -422,8 +422,8 @@ __host__ void mark_active_b(spix_params* params,
   int* ids_ptr = thrust::raw_pointer_cast(ids.data());
   int* nspix_ptr = thrust::raw_pointer_cast(nspix.data());
 
-    // gpuErrchk( cudaPeekAtLastError() );
-    // gpuErrchk( cudaDeviceSynchronize() );
+    gpuErrchk( cudaPeekAtLastError() );
+    gpuErrchk( cudaDeviceSynchronize() );
   //printf("nspix_buffer: %d, sp_size: %d\n",nspix_buffer, sp_size);
 
   // -- mark activte/inactive --
@@ -432,16 +432,16 @@ __host__ void mark_active_b(spix_params* params,
   dim3 BlockPerGrid1(num_block1,nbatch);
   mark_inactive_kernel_b<<<BlockPerGrid1,ThreadPerBlock>>>(params,nspix_ptr,nspix_buffer,sp_size);
 
-    // gpuErrchk( cudaPeekAtLastError() );
-    // gpuErrchk( cudaDeviceSynchronize() );
+    gpuErrchk( cudaPeekAtLastError() );
+    gpuErrchk( cudaDeviceSynchronize() );
 
   // -- report--
   //cudaMemcpy(&nvalid, nvalid_gpu, sizeof(int), cudaMemcpyDeviceToHost);
   // printf("[init_sparams.mark_active] ninactive: %d\n",nvalid);
   //cudaMemset(nvalid_gpu, 0,sizeof(int));
 
-    // gpuErrchk( cudaPeekAtLastError() );
-    // gpuErrchk( cudaDeviceSynchronize() );
+    gpuErrchk( cudaPeekAtLastError() );
+    gpuErrchk( cudaDeviceSynchronize() );
 
   int nspix_max = *thrust::max_element(nspix.begin(), nspix.end());
   //printf("nspix_max: %d\n",nspix_max);
@@ -450,8 +450,8 @@ __host__ void mark_active_b(spix_params* params,
   // std::cout << num_block2 <<  " " << nactive << std::endl;
   mark_active_kernel_b<<<BlockPerGrid2,ThreadPerBlock>>>(params,ids_ptr,nspix_ptr,nspix_buffer,nspix_max);
 
-    // gpuErrchk( cudaPeekAtLastError() );
-    // gpuErrchk( cudaDeviceSynchronize() );
+    gpuErrchk( cudaPeekAtLastError() );
+    gpuErrchk( cudaDeviceSynchronize() );
 
   // -- report--
   //cudaMemcpy(&nvalid, nvalid_gpu, sizeof(int), cudaMemcpyDeviceToHost);

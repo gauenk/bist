@@ -76,11 +76,11 @@ def relabel_spix(spix_b, spix_s):
         # exit()
 
         spix_b[ti] = xfer[spix_b[ti].long()].reshape(spix_b[ti].shape)
-    
+
     return spix_b
 
 def main_cpp():
-    
+
     # -- setup --
     vname = "kid-football"
     vpath = "data/examples/%s/imgs"%vname
@@ -195,4 +195,4 @@ def main_py():
 
 if __name__ == "__main__":
     main_cpp()
-    #main_py()
+    # main_py()
