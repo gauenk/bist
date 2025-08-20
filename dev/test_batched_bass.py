@@ -86,7 +86,7 @@ def main_cpp():
     vpath = "data/examples/%s/imgs"%vname
     fpath = "data/examples/%s/flows"%vname
     vid = bist.utils.read_video("data/examples/%s/imgs"%vname).cuda()/255.
-    cfg = {"niters":20,"video_mode":False,"sp_size":10,"potts":10.0,"save_only_spix":False,"use_sm":False}
+    cfg = {"niters":25,"video_mode":False,"sp_size":25,"potts":10.0,"save_only_spix":False,"use_sm":False}
     sroot = Path("output/test_batched_bass/")
     if not sroot.exists():
         sroot.mkdir(parents=True, exist_ok=True)
@@ -140,7 +140,7 @@ def main_py():
     fpath = "data/examples/%s/flows"%vname
     vid = bist.utils.read_video("data/examples/%s/imgs"%vname)[:,:,:].cuda()/255.
     fflows = th.zeros_like(vid[...,:2])
-    cfg = {"niters":20,"video_mode":False,"sp_size":10,"potts":10.0,"use_sm":False}
+    cfg = {"niters":20,"video_mode":False,"sp_size":20,"potts":10.0,"use_sm":False}
     sroot = Path("output/test_batched_bass/")
     if not sroot.exists():
         sroot.mkdir(parents=True, exist_ok=True)
@@ -194,5 +194,5 @@ def main_py():
             print("Batched spix not compactified")
 
 if __name__ == "__main__":
-    #main_cpp()
-    main_py()
+    main_cpp()
+    #main_py()

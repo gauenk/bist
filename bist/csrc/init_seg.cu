@@ -87,6 +87,7 @@ __global__ void InitHexSeg(int* seg, double* centers,
      Init Square segmentation (for demo!)
  ********************************************/
 
+
 __host__ int init_square_seg(int* seg, int sp_size, int width, int height, int nbatch){
 
   // -- superpixel info --

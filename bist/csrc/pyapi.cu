@@ -392,11 +392,12 @@ batched_bass_cuda(const torch::Tensor vid,
    SuperpixelParams* params = std::get<2>(out);
 
    // -- fill --
-   torch::Tensor spix_th = torch::from_blob(spix, {nbatch, height, width}, options_i32);
+   torch::Tensor spix_th = torch::from_blob(spix, {nbatch, height, width}, options_i32).clone();
+   cudaFree(spix);
 
    // -- free data --
    cudaFree(border);
-   cudaFree(params);
+   //cudaFree(params); // its a null ptr
 
   if (rgb2lab_b) {
    cudaFree(img_lab);

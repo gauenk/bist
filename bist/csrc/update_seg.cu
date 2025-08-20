@@ -172,14 +172,14 @@ void update_seg_subset(float* img, int* seg, bool* border,
                            label_check,sigma2_app,count_diff_nbrs_E,potts,res_max);
     
     // printf("[b] idx: %d\n",pix_idx);
-    int count_C = sp_params[C+label_offset].count;
-    if ((count_C <= 2) and (res_max.y == C)){
-      //printf("edge case! [%d] %d %d \n",batch_ix,C,sp_params[C+label_offset].count);
-      if (N>=0){ res_max.y = N;}
-      else if(E>=0){ res_max.y = E;}
-      else if(S>=0){ res_max.y = S;}
-      else if(W>=0){ res_max.y = W;}
-    }
+    // int count_C = sp_params[C+label_offset].count;
+    // if ((count_C <= 2) and (res_max.y == C)){
+    //   //printf("edge case! [%d] %d %d \n",batch_ix,C,sp_params[C+label_offset].count);
+    //   if (N>=0){ res_max.y = N;}
+    //   else if(E>=0){ res_max.y = E;}
+    //   else if(S>=0){ res_max.y = S;}
+    //   else if(W>=0){ res_max.y = W;}
+    // }
 
     // -- update --
     assert(res_max.y>=0); // dev only
