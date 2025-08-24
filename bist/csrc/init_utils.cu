@@ -17,6 +17,18 @@
 
 **************************************************/
 
+int check_cuda_error(){
+  //  -- error check --
+  cudaError_t err_t = cudaDeviceSynchronize();
+  if (err_t){
+      std::cerr << "CUDA error after cudaDeviceSynchronize."
+                << err_t << std::endl;
+      return 1;
+  }
+  return 0;
+}
+
+
 void throw_on_cuda_error_prop(cudaError_t code){ // new name since two .so objects (ugh)
   if(code != cudaSuccess){
     throw thrust::system_error(code, thrust::cuda_category());

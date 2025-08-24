@@ -12,6 +12,7 @@
 #include <iostream>
 #include <fstream>
 #include <dirent.h>
+#include <filesystem>
 
 // -- thrust --
 #include <thrust/device_vector.h>
@@ -73,6 +74,15 @@ void show_usage(const std::string &program_name) {
 }
 
 
+std::vector<std::filesystem::path> get_scene_files(std::filesystem::path root) {
+   std::vector<std::filesystem::path> scene_files;
+   for (const auto& entry : std::filesystem::directory_iterator(root)) {
+       if (entry.is_directory()) {
+           scene_files.push_back(entry.path());
+       }
+   }
+   return scene_files;
+}
 
 /********* Create a directory if it doesn't exist. ***********/
 void ensureDirectoryExists(const std::string& path) {

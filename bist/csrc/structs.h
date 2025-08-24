@@ -231,42 +231,42 @@ struct alignas(16) spix_helper_sm_v2 {
 //     return true;
 // }
 
-// Helper functions for different types
-inline void set_argument_value(int &value, char* arg) {
-    value = std::stoi(arg);
-}
+// // Helper functions for different types
+// inline void set_argument_value(int &value, char* arg) {
+//     value = std::stoi(arg);
+// }
 
-inline void set_argument_value(float &value, char* arg) {
-    value = std::stof(arg);
-}
+// inline void set_argument_value(float &value, char* arg) {
+//     value = std::stof(arg);
+// }
 
-inline void set_argument_value(bool &value, char* arg) {
-    value = std::stoi(arg) == 1;
-}
+// inline void set_argument_value(bool &value, char* arg) {
+//     value = std::stoi(arg) == 1;
+// }
 
-inline void set_argument_value(std::string &value, char* arg) {
-    value = arg;
-}
+// inline void set_argument_value(std::string &value, char* arg) {
+//     value = arg;
+// }
 
-inline void set_argument_value(const char* &value, char* arg) {
-    value = arg;
-}
+// inline void set_argument_value(const char* &value, char* arg) {
+//     value = arg;
+// }
 
-// C++14 compatible template function
-template <typename T>
-bool parse_argument(int &i, int argc, char **argv, const std::string &arg,
-                    const std::string &option, T &value) {
-    if (arg == option) {
-        if (i + 1 < argc) {
-            ++i;
-            set_argument_value(value, argv[i]);
-        } else {
-            std::cerr << option << " option requires an argument." << std::endl;
-            return false;
-        }
-    }
-    return true;
-}
+// // C++14 compatible template function
+// template <typename T>
+// bool parse_argument(int &i, int argc, char **argv, const std::string &arg,
+//                     const std::string &option, T &value) {
+//     if (arg == option) {
+//         if (i + 1 < argc) {
+//             ++i;
+//             set_argument_value(value, argv[i]);
+//         } else {
+//             std::cerr << option << " option requires an argument." << std::endl;
+//             return false;
+//         }
+//     }
+//     return true;
+// }
 
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }

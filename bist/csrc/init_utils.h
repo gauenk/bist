@@ -16,6 +16,7 @@
 
 **************************************************/
 
+int check_cuda_error();
 void throw_on_cuda_error(cudaError_t code);
 void* easy_allocate(int size, int esize);
 void* easy_allocate_cpu(int size, int esize);

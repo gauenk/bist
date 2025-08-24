@@ -1,5 +1,6 @@
 
 #include "init_seg.h"
+#include "init_utils.h"
 #define THREADS_PER_BLOCK 512
 
 /*************************************************
@@ -7,15 +8,6 @@
               Initialize Superpixels
 
 **************************************************/
-
-__host__ int nspix_from_spsize(int sp_size, int width, int height){
-  double H = sqrt( double(pow(sp_size, 2)) / (1.5 *sqrt(3.0)) );
-  double w = sqrt(3.0) * H;
-  int max_num_sp_x = (int) floor(double(width)/w) + 2;
-  int max_num_sp_y = (int) floor(double(height)/(1.5*H)) + 2;
-  int nspix = max_num_sp_x * max_num_sp_y;
-  return nspix;
-}
 
 __host__ int init_seg(int* seg, int sp_size, int width, int height, int nbatch){
 
@@ -43,6 +35,15 @@ __host__ int init_seg(int* seg, int sp_size, int width, int height, int nbatch){
   cudaFree(centers);
   return nspix;
 
+}
+
+__host__ int nspix_from_spsize(int sp_size, int width, int height){
+  double H = sqrt( double(pow(sp_size, 2)) / (1.5 *sqrt(3.0)) );
+  double w = sqrt(3.0) * H;
+  int max_num_sp_x = (int) floor(double(width)/w) + 2;
+  int max_num_sp_y = (int) floor(double(height)/(1.5*H)) + 2;
+  int nspix = max_num_sp_x * max_num_sp_y;
+  return nspix;
 }
 
 __global__ void InitHexCenter(double* centers, double H, double w, int nspix,
@@ -107,8 +108,7 @@ __host__ int init_square_seg(int* seg, int sp_size, int width, int height, int n
   // cudaMalloc((void**) &centers, 2*nspix*sizeof(double));
   // InitSquareCenter<<<BlockPerGrid_spix,ThreadPerBlock>>>(centers, H, w, nspix,
   //                                                        max_num_sp_x, width, height); 
-  InitSquareSeg<<<BlockPerGrid_pix,ThreadPerBlock>>>(seg, sp_size,
-                                                     max_num_sp_x, npix, width);
+  InitSquareSeg<<<BlockPerGrid_pix,ThreadPerBlock>>>(seg, sp_size,max_num_sp_x, npix, width);
   // cudaFree(centers);
   return nspix;
 
@@ -129,4 +129,104 @@ __global__ void InitSquareSeg(int* seg, int sp_size,
 
   seg[idx] = sp_index;
   // seg[idx] = 0;//sp_index;
+}
+
+
+/*************************************************
+
+  Initialize 3D Superpixels (BCC Voronoi Cells)
+
+**************************************************/
+
+__host__ long* init_seg_3d(long* spix, int* pos, int* ptr, int* dim_sizes, int sp_size, int nbatch, int ntotal){
+
+  // -- launch params --
+  long* nspix = (long*)easy_allocate(nbatch,sizeof(long));
+  dim3 nthreads(THREADS_PER_BLOCK);
+  int nblocks_nodes =  ceil(double(ntotal) /double(THREADS_PER_BLOCK));
+  dim3 nblocks(nblocks_nodes,nbatch);
+  InitVeronoiSeg<<<nblocks,nthreads>>>(spix, nspix, pos, ptr, dim_sizes, sp_size);
+  return nspix;
+}
+
+
+__global__ void InitVeronoiSeg(long* spix, long* nspix, int* pos, int* ptr, int* dim_sizes, int S){
+	
+  // -- unpack threads --
+  int node_ix = threadIdx.x + blockIdx.x * blockDim.x;
+  int bx = blockIdx.y;
+  bool cell_type = false;
+             
+  // -- ... --
+  int ptr_offset = ptr[bx];
+  int nnodes = ptr[bx+1] - ptr_offset;
+  if (node_ix >= nnodes){ return; }
+  int local_node_ix = node_ix;
+  node_ix = node_ix + ptr_offset;
+
+  // -- unpack position --
+  int x = pos[3*node_ix+0];
+  int y = pos[3*node_ix+1];
+  int z = pos[3*node_ix+2];
+
+  // -- lattic coordinates --
+  int xi_a = __float2int_rn((float)x / S); // round nearest (_rn)
+  int yi_a = __float2int_rn((float)y / S); 
+  int zi_a = __float2int_rn((float)z / S); 
+  int xi_b = __float2int_rd((float)x / S); // round down (_rd)
+  int yi_b = __float2int_rd((float)y / S); 
+  int zi_b = __float2int_rd((float)z / S); 
+
+  // -- center A --
+  float distA = (x - S*xi_a)*(x - S*xi_a)
+                  + (y - S*yi_a)*(y - S*yi_a)
+                  + (z - S*zi_a)*(z - S*zi_a);
+  float distB = (x - S*xi_b + 0.5)*(x - S*xi_b + 0.5)
+                  + (y - S*yi_b + 0.5)*(y - S*yi_b + 0.5)
+                  + (z - S*zi_b + 0.5)*(z - S*zi_b + 0.5);
+
+  // -- select point type --
+  int xi,yi,zi;
+  if (distA < distB){
+    xi = xi_a;
+    yi = yi_a;
+    zi = zi_a;
+    cell_type = false;
+  }else{
+    xi = xi_b;
+    yi = yi_b;
+    zi = zi_b;
+    cell_type = true;
+  }
+  
+  // -- bounds in 3d space --
+  int xmin = dim_sizes[6*bx+0]/S-1;
+  int xmax = (dim_sizes[6*bx+1]-1)/S+1 +1;
+  int ymin = dim_sizes[6*bx+2]/S-1;
+  int ymax = (dim_sizes[6*bx+3]-1)/S+1 +1;
+  int zmin = dim_sizes[6*bx+4]/S-1;
+  int zmax = (dim_sizes[6*bx+5]-1)/S+1 +1;
+
+  // -- ensure boundary --
+  if ((xi < xmin) || (xmax < xi) ||
+      (yi < ymin) || (ymax < yi) ||
+      (zi < zmin) || (zmax < zi)){
+        spix[node_ix] = -1;
+        return;
+      }
+
+  // -- start numbering at (0,0,0) --
+  xi -= xmin;
+  yi -= ymin;
+  zi -= zmin;
+
+  // -- ... --
+  int nx = (xmax - xmin - 1)/S+1;
+  int ny = (ymax - ymin - 1)/S+1;
+  int nz = (zmax - zmin - 1)/S+1;
+
+  spix[node_ix] = (xi * ny * nz + yi * nz + zi) * 2 + cell_type;
+  if (local_node_ix == 0){
+    nspix[bx] = nx *  ny * nz * 2;
+  }
 }

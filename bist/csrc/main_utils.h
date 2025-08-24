@@ -7,6 +7,7 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/opencv.hpp>
+#include <filesystem>
 
 // -- thrust --
 #include <thrust/device_vector.h>
@@ -47,7 +48,4 @@ std::tuple<int*,int,bool*>
 get_square_segmentation(int sp_size, int nbatch, int height, int width);
 
 
-
-
-
-
+std::vector<std::filesystem::path> get_scene_files(std::filesystem::path root);
