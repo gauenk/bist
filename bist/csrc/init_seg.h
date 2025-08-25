@@ -20,5 +20,5 @@ __global__ void InitHexSeg(int* seg, double* centers,
 
 __host__ int init_square_seg(int* seg, int sp_size, int width, int height, int nbatch);
 __global__ void InitSquareSeg(int* seg,int sp_size,int max_num_sp_x, int npix, int width);
-__host__ long* init_seg_3d(long* seg, int* pos, int* ptr, int* dim_sizes, int sp_size, int nbatch, int ntotal);
-__global__ void InitVeronoiSeg(long* spix, long* nspix, int* pos, int* ptr, int* dim_sizes, int S);
+__host__ uint64_t* init_seg_3d(uint64_t* spix, float3* pos, uint32_t* bids, int* ptr, float* dim_sizes, int sp_size, int nbatch, int ntotal);
+__global__ void InitVeronoiSeg(uint64_t* spix, uint64_t* nspix, float3* pos, uint32_t* bids, int* ptr, float* dim_sizes, int S, int nnodes);

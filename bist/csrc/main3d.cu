@@ -159,35 +159,17 @@ int main(int argc, char **argv) {
 
             **********************************************/
 
-            // -- todo! read batch of scenes --
+            // -- read batch of scenes --
             int s_index = _ix*batchsize;
             int e_index = std::min((_ix+1)*batchsize, (int)scene_files.size());
             std::vector<std::filesystem::path> scene_files_b(scene_files.begin() + s_index, scene_files.begin() + e_index);
-            auto out = read_scene(scene_files_b);
-            float3* ftrs = std::get<0>(out);
-            float3* pos = std::get<1>(out);
-            float3* dim_sizes = std::get<2>(out);
-            int* nnodes = std::get<3>(out);
-            int total_nodes = std::get<4>(out);
-            int batchsize = std::get<5>(out);
-
-            cudaDeviceSynchronize();
-
-            bool succ = write_scene(scene_files_b,output_root,ftrs,pos,nnodes,total_nodes);
-
-            cudaDeviceSynchronize();
-            cudaFree(ftrs);
-            cudaFree(pos);
-            cudaFree(dim_sizes);
-            cudaFree(nnodes);
-            
-            // scenes = [];
-            // for(int batch_ix = 0; batch_ix < batchsize; batch_ix++){
-            //     int file_ix = batch_ix + _ix*batchsize;
-            //     std::string scene_name = scene_files[file_ix];
-            //     PointCloudReader reader;
-            //     reader.readOFFPoints(scene_name);
-            // } 
+            auto read_out = read_scene(scene_files_b);
+            float3* ftrs = std::get<0>(read_out);
+            float3* pos = std::get<1>(read_out);
+            uint32_t* bids = std::get<2>(read_out);
+            int* ptr = std::get<3>(read_out);
+            float* dim_sizes = std::get<4>(read_out);
+            int batchsize = scene_files_b.size();
             cudaDeviceSynchronize();
 
             // -- update sp_size to control # of spix --
@@ -209,7 +191,7 @@ int main(int argc, char **argv) {
             start = clock();
 
             // -- single image --
-            int* spix = nullptr;
+            uint64_t* spix = nullptr;
             bool* border = nullptr;
             int nspix = -1;
             SuperpixelParams* params = nullptr;
@@ -218,18 +200,17 @@ int main(int argc, char **argv) {
             Logger* logger = nullptr;
             // if (logging==1){
             //   ensureDirectoryExists(log_root);
-            //   logger = new Logger(log_root,count,height,width,10*0,niters,4);
+            //   logger = new Logger3d(log_root,count,height,width,10*0,niters,4);
             // }
 
-        //     // -- run segmentation --
-        //     auto out = run_bass3d(ftrs, pos, int* ptr, int* nnodes, 
-        //    int* dim_sizes, int nbatch, int nftrs,
-        //    int niters, int niters_seg, int sm_start, int sp_size,
-        //    float sigma2_app, float sigma2_size, float potts,
-        //    float alpha_hastings, float split_alpha, int target_nspix, Logger* logger)
-        //     spix = std::get<0>(out);
-        //     border = std::get<1>(out);
-        //     params = std::get<2>(out);
+            // -- run segmentation --
+            auto spix_out = run_bass3d(ftrs, pos, bids, ptr, dim_sizes, batchsize,
+                                 niters, niters_seg, sm_start, sp_size,
+                                 sigma2_app, sigma2_size, potts, alpha,
+                                 split_alpha, target_nspix, logger);
+            spix = std::get<0>(spix_out);
+            border = std::get<1>(spix_out);
+            params = std::get<2>(spix_out);
 
 
             // -- benchmarking/tracking --
@@ -330,6 +311,20 @@ int main(int argc, char **argv) {
             // }
 
 
+            // -- write and free --
+            bool succ = write_scene(scene_files_b,output_root,ftrs,pos,ptr,spix);
+
+            cudaDeviceSynchronize();
+
+            // -- free spix info --
+            cudaFree(spix);
+
+            // -- free data --
+            cudaFree(ftrs);
+            cudaFree(pos);
+            cudaFree(bids);
+            cudaFree(ptr);
+            cudaFree(dim_sizes);
         }
         cudaDeviceReset();
 

@@ -1,6 +1,7 @@
 
 #include "init_seg.h"
 #include "init_utils.h"
+#include <math.h>
 #define THREADS_PER_BLOCK 512
 
 /*************************************************
@@ -138,36 +139,51 @@ __global__ void InitSquareSeg(int* seg, int sp_size,
 
 **************************************************/
 
-__host__ long* init_seg_3d(long* spix, int* pos, int* ptr, int* dim_sizes, int sp_size, int nbatch, int ntotal){
-
-  // -- launch params --
-  long* nspix = (long*)easy_allocate(nbatch,sizeof(long));
+__host__ uint64_t* init_seg_3d(uint64_t* spix, float3* pos, uint32_t* bids, int* ptr, float* dim_sizes, int sp_size, int nbatch, int nnodes){
+  uint64_t* nspix = (uint64_t*)easy_allocate(nbatch,sizeof(uint64_t));
   dim3 nthreads(THREADS_PER_BLOCK);
-  int nblocks_nodes =  ceil(double(ntotal) /double(THREADS_PER_BLOCK));
-  dim3 nblocks(nblocks_nodes,nbatch);
-  InitVeronoiSeg<<<nblocks,nthreads>>>(spix, nspix, pos, ptr, dim_sizes, sp_size);
+  int nblocks_nodes =  ceil(double(nnodes) /double(THREADS_PER_BLOCK));
+  dim3 nblocks(nblocks_nodes);
+  InitVeronoiSeg<<<nblocks,nthreads>>>(spix, nspix, pos, bids, ptr, dim_sizes, sp_size, nnodes);
   return nspix;
 }
 
 
-__global__ void InitVeronoiSeg(long* spix, long* nspix, int* pos, int* ptr, int* dim_sizes, int S){
+__global__ void InitVeronoiSeg(uint64_t* spix, uint64_t* nspix, float3* pos, uint32_t* bids, int* ptr, float* dim_sizes, int sp_size, int nnodes_total){
 	
   // -- unpack threads --
   int node_ix = threadIdx.x + blockIdx.x * blockDim.x;
-  int bx = blockIdx.y;
+  if (node_ix >= nnodes_total){ return; }
+  int bx = bids[node_ix];
   bool cell_type = false;
              
   // -- ... --
   int ptr_offset = ptr[bx];
   int nnodes = ptr[bx+1] - ptr_offset;
+  //float S = std::pow(static_cast<float>(nnodes), 1.0f / 3.0f);
+  float S = 0.01 * sp_size; // about 1 cm spacing.
   if (node_ix >= nnodes){ return; }
   int local_node_ix = node_ix;
   node_ix = node_ix + ptr_offset;
 
+  // -- bounds in 3d space --
+  // int xlen = dim_sizes[6*bx+1] - dim_sizes[6*bx+0];
+  // int ylen = dim_sizes[6*bx+3] - dim_sizes[6*bx+2];
+  // int zlen = dim_sizes[6*bx+5] - dim_sizes[6*bx+4];
+  int xmin = floorf(dim_sizes[6*bx+0]/S)-1;
+  int xmax = ceilf(dim_sizes[6*bx+1]/S)+1;
+  int ymin = floorf(dim_sizes[6*bx+2]/S)-1;
+  int ymax = ceilf(dim_sizes[6*bx+3]/S)+1;
+  int zmin = floorf(dim_sizes[6*bx+4]/S)-1;
+  int zmax = ceilf(dim_sizes[6*bx+5]/S)+1;
+
+
   // -- unpack position --
-  int x = pos[3*node_ix+0];
-  int y = pos[3*node_ix+1];
-  int z = pos[3*node_ix+2];
+  float3 xyz = pos[node_ix];
+  float x = xyz.x;
+  float y = xyz.y;
+  float z = xyz.z;
+  // printf("x,y,z,S: %2.2f %2.2f %2.2f %2.2f\n",x,y,z,S);
 
   // -- lattic coordinates --
   int xi_a = __float2int_rn((float)x / S); // round nearest (_rn)
@@ -198,19 +214,12 @@ __global__ void InitVeronoiSeg(long* spix, long* nspix, int* pos, int* ptr, int*
     zi = zi_b;
     cell_type = true;
   }
-  
-  // -- bounds in 3d space --
-  int xmin = dim_sizes[6*bx+0]/S-1;
-  int xmax = (dim_sizes[6*bx+1]-1)/S+1 +1;
-  int ymin = dim_sizes[6*bx+2]/S-1;
-  int ymax = (dim_sizes[6*bx+3]-1)/S+1 +1;
-  int zmin = dim_sizes[6*bx+4]/S-1;
-  int zmax = (dim_sizes[6*bx+5]-1)/S+1 +1;
 
   // -- ensure boundary --
   if ((xi < xmin) || (xmax < xi) ||
       (yi < ymin) || (ymax < yi) ||
       (zi < zmin) || (zmax < zi)){
+        printf("[(%d,%d) (%d,%d) (%d,%d)] x,y,z,S: %d %d %d %2.2f\n",xmin,xmax,ymin,ymax,zmin,zmax,xi,yi,zi,S);
         spix[node_ix] = -1;
         return;
       }
@@ -221,12 +230,16 @@ __global__ void InitVeronoiSeg(long* spix, long* nspix, int* pos, int* ptr, int*
   zi -= zmin;
 
   // -- ... --
-  int nx = (xmax - xmin - 1)/S+1;
-  int ny = (ymax - ymin - 1)/S+1;
-  int nz = (zmax - zmin - 1)/S+1;
+  // int nx = (xmax - xmin - 1)/S+1;
+  // int ny = (ymax - ymin - 1)/S+1;
+  // int nz = (zmax - zmin - 1)/S+1;
+  int nx = xmax - xmin;
+  int ny = ymax - ymin;
+  int nz = zmax - zmin;
 
   spix[node_ix] = (xi * ny * nz + yi * nz + zi) * 2 + cell_type;
+  //printf("spix[%d] = %d\n",node_ix,spix[node_ix]);
   if (local_node_ix == 0){
-    nspix[bx] = nx *  ny * nz * 2;
+    nspix[bx] = min(nx *  ny * nz * 2,nnodes);
   }
 }
