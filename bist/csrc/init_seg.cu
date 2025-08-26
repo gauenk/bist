@@ -160,9 +160,6 @@ __global__ void InitVeronoiSeg(uint64_t* spix, uint64_t* nspix, float3* pos, uin
   // -- ... --
   int ptr_offset = ptr[bx];
   int nnodes = ptr[bx+1] - ptr_offset;
-  // if (bx == 1){
-  //   printf("bx,nnodes: %d,%d\n",bx,nnodes);
-  // }
   float S = 0.01 * sp_size; // about 1 cm spacing.
   int local_node_ix = node_ix - ptr_offset;
   if (local_node_ix >= nnodes){ return; }
