@@ -169,7 +169,8 @@ int main(int argc, char **argv) {
             uint32_t* edges = std::get<2>(read_out);
             uint8_t* bids = std::get<3>(read_out);
             int* ptr = std::get<4>(read_out);
-            float* dim_sizes = std::get<5>(read_out);
+            int* eptr = std::get<5>(read_out);
+            float* dim_sizes = std::get<6>(read_out);
             int batchsize = scene_files_b.size();
             cudaDeviceSynchronize();
 
@@ -205,7 +206,7 @@ int main(int argc, char **argv) {
             start = clock();
 
             // -- run segmentation --
-            auto spix_out = run_bass3d(ftrs, pos, edges, bids, ptr, dim_sizes, batchsize,
+            auto spix_out = run_bass3d(ftrs, pos, edges, bids, ptr, eptr, dim_sizes, batchsize,
                                         niters, niters_seg, sm_start, sp_size,
                                         sigma2_app, sigma2_size, potts, alpha,
                                         split_alpha, target_nspix, logger);
@@ -312,7 +313,7 @@ int main(int argc, char **argv) {
 
 
             // -- write and free --
-            bool succ = write_scene(scene_files_b,output_root,ftrs,pos,ptr,spix);
+            bool succ = write_scene(scene_files_b,output_root,ftrs,pos,edges,ptr,eptr,spix);
 
             cudaDeviceSynchronize();
 
@@ -322,8 +323,10 @@ int main(int argc, char **argv) {
             // -- free data --
             cudaFree(ftrs);
             cudaFree(pos);
+            cudaFree(edges);
             cudaFree(bids);
             cudaFree(ptr);
+            cudaFree(eptr);
             cudaFree(dim_sizes);
         }
         cudaDeviceReset();

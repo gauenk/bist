@@ -13,6 +13,8 @@
 
 #include <vector>
 #include <thrust/device_ptr.h>
+#include <thrust/device_vector.h>
+
 
 #include "cuda.h"
 #include "cuda_runtime.h"
@@ -20,7 +22,7 @@
 #include "scannet_reader.h"
 
 // -- read each scene --
-std::tuple<float3*,float3*,uint32_t*,uint8_t*,int*,float*>
+std::tuple<float3*,float3*,uint32_t*,uint8_t*,int*,int*,float*>
 read_scene(const std::vector<std::filesystem::path>& scene_files){
 
     // -- read sizes --
@@ -42,6 +44,9 @@ read_scene(const std::vector<std::filesystem::path>& scene_files){
     std::vector<float> pos(3*total_nodes);
     std::vector<float> dim_sizes(6*batchsize);
     std::vector<uint8_t> bids(total_nodes);
+    thrust::device_vector<uint32_t> edges;
+    int* eptr_cpu = (int*)malloc((batchsize+1) * sizeof(int));
+    eptr_cpu[0] = 0;
 
     // Second pass: append data
     int _bx = 0;
@@ -58,6 +63,15 @@ read_scene(const std::vector<std::filesystem::path>& scene_files){
         memcpy(&ftrs[3*_ix], scene.ftr.data(), 3 * scene.size * sizeof(float));
         memcpy(&pos[3*_ix], scene.pos.data(), 3 * scene.size * sizeof(float));
         std::fill(bids.begin() + _ix, bids.begin() + _ix + scene.size, _bx);
+
+        // -- extract edges from edge-pairs --
+
+        thrust::device_vector<uint32_t> edges_b = extract_edges_from_pairs(scene.e0,scene.e1);
+        size_t _size = edges.size();
+        edges.resize(_size + edges_b.size());
+        thrust::copy(edges_b.begin(), edges_b.end(), edges.begin() + _size);
+        eptr_cpu[_bx+1] = eptr_cpu[_bx]+edges_b.size()/2;
+        printf("eptr_cpu: %d %d\n", eptr_cpu[_bx],eptr_cpu[_bx+1]);
 
         // -- .. --
         dim_sizes[6*_bx+0] = scene.xmin;
@@ -90,28 +104,32 @@ read_scene(const std::vector<std::filesystem::path>& scene_files){
         std::cout << "  Pos: (" << pos[i] << ", " << pos[i+1] << ", " << pos[i+2] << ")" << std::endl;
         std::cout << "  RGB: (" << ftrs[i] << ", " << ftrs[i+1] << ", " << ftrs[i+2] << ")" << std::endl;
     }
-    
+
     // -- copy --
+    int nedges = eptr_cpu[batchsize];
     float3* ftrs_cu = (float3*)easy_allocate(total_nodes,sizeof(float3));
     float3* pos_cu = (float3*)easy_allocate(total_nodes,sizeof(float3));
-    uint32_t* edges_cu = nullptr;
+    uint32_t* edges_cu = (uint32_t*)easy_allocate(2*nedges,sizeof(uint32_t));
     uint8_t* bids_cu = (uint8_t*)easy_allocate(total_nodes,sizeof(uint8_t));
     int* ptr_cu = (int*)easy_allocate(batchsize+1,sizeof(int));
+    int* eptr_cu = (int*)easy_allocate(batchsize+1,sizeof(int));
     float* dim_sizes_cu = (float*)easy_allocate(6*batchsize,sizeof(float));
     cudaDeviceSynchronize();
     cudaMemcpy(ftrs_cu,thrust::raw_pointer_cast(ftrs.data()),total_nodes*sizeof(float3),cudaMemcpyHostToDevice);
     cudaMemcpy(pos_cu,thrust::raw_pointer_cast(pos.data()),total_nodes*sizeof(float3),cudaMemcpyHostToDevice);
+    cudaMemcpy(edges_cu,thrust::raw_pointer_cast(edges.data()),2*nedges*sizeof(uint32_t),cudaMemcpyDeviceToDevice);
     cudaMemcpy(bids_cu,thrust::raw_pointer_cast(bids.data()),total_nodes*sizeof(uint8_t),cudaMemcpyHostToDevice);
     cudaMemcpy(ptr_cu,ptr_cpu,(batchsize+1)*sizeof(int),cudaMemcpyHostToDevice);
+    cudaMemcpy(eptr_cu,eptr_cpu,(batchsize+1)*sizeof(int),cudaMemcpyHostToDevice);
     cudaMemcpy(dim_sizes_cu,thrust::raw_pointer_cast(dim_sizes.data()),6*batchsize*sizeof(float),cudaMemcpyHostToDevice);
-    return std::tuple(ftrs_cu,pos_cu,edges_cu,bids_cu,ptr_cu,dim_sizes_cu);
+    return std::tuple(ftrs_cu,pos_cu,edges_cu,bids_cu,ptr_cu,eptr_cu,dim_sizes_cu);
 
 }
 
 // -- write each scene; [nnodes == spix if point-cloud is the superpixel point cloud] --
 bool write_scene(const std::vector<std::filesystem::path>& scene_files, 
                 const std::filesystem::path& output_root, 
-                float3* ftrs_cu, float3* pos_cu, int* ptr_cu, uint32_t* labels_cu){
+                float3* ftrs_cu, float3* pos_cu, uint32_t* edges_cu, int* ptr_cu, int* eptr_cu, uint32_t* labels_cu){
 
     // -- sync before io --
     cudaDeviceSynchronize();
@@ -120,13 +138,18 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
     int nbatch = scene_files.size();
     int nnodes;
     cudaMemcpy(&nnodes,&ptr_cu[nbatch],sizeof(int),cudaMemcpyDeviceToHost);
+    int nedges;
+    cudaMemcpy(&nedges,&eptr_cu[nbatch],sizeof(int),cudaMemcpyDeviceToHost);
     printf("nnodes: %d\n",nnodes);
+    printf("nedges: %d\n",nedges);
     
     // -- allocate --
     float* ftrs = (float*)malloc(3*nnodes*sizeof(float));
     float* pos = (float*)malloc(3*nnodes*sizeof(float));
+    uint32_t* edges = (uint32_t*)malloc(2*nedges*sizeof(uint32_t));
     //float* dim_sizes = (float*)malloc(6*nbatch,sizeof(float));
     int* ptr = (int*)malloc((nbatch+1)*sizeof(int));
+    int* eptr = (int*)malloc((nbatch+1)*sizeof(int));
     uint32_t* labels = nullptr;
     if (labels_cu != nullptr){
         labels = (uint32_t*)malloc(nnodes*sizeof(uint32_t));
@@ -135,8 +158,10 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
     // -- read to cpu --
     cudaMemcpy(ftrs,ftrs_cu,nnodes*sizeof(float3),cudaMemcpyDeviceToHost);
     cudaMemcpy(pos,pos_cu,nnodes*sizeof(float3),cudaMemcpyDeviceToHost);
+    cudaMemcpy(edges,edges_cu,2*nedges*sizeof(uint32_t),cudaMemcpyDeviceToHost);
     //cudaMemcpy(dim_sizes,dim_sizes_cu,2*nbatch*sizeof(float3),cudaMemcpyDeviceToHost);
     cudaMemcpy(ptr,ptr_cu,(nbatch+1)*sizeof(int),cudaMemcpyDeviceToHost);
+    cudaMemcpy(eptr,eptr_cu,(nbatch+1)*sizeof(int),cudaMemcpyDeviceToHost);
     if (labels_cu != nullptr){
         cudaMemcpy(labels,labels_cu,nnodes*sizeof(uint32_t),cudaMemcpyDeviceToHost);
     }
@@ -151,15 +176,18 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
         // -- get pointers --
         float* ftrs_b = &ftrs[3*ptr[ix]];
         float* pos_b = &pos[3*ptr[ix]];
+        uint32_t* edges_b = &edges[2*eptr[ix]];
         uint32_t* labels_b = (labels != nullptr) ? &labels[ptr[ix]] : nullptr;
         int nnodes = ptr[ix+1] - ptr[ix];
+        int nedges = eptr[ix+1] - eptr[ix];
+        printf("nedges: %d\n",nedges);
         if (labels!=nullptr){
             printf("labels_b: %ld\n",labels_b[0]);
         }
 
         // -- .. --
         ScanNetScene scene;
-        if(!scene.write_ply(scene_file,output_root,ftrs_b,pos_b,nnodes,labels_b)){
+        if(!scene.write_ply(scene_file,output_root,ftrs_b,pos_b,edges_b,nnodes,nedges,labels_b)){
             exit(1);
         }
 
@@ -247,12 +275,15 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
     
     // Parse header
     int vertex_count = 0;
+    int face_count = 0;
     bool binary_format = false;
     
     while (std::getline(file, line)) {
         std::cout << line << std::endl;
         if (line.find("element vertex") != std::string::npos) {
             vertex_count = std::stoi(line.substr(15));
+        } else if (line.find("element face") != std::string::npos) {
+            face_count = std::stoi(line.substr(13));
         } else if (line.find("format binary") != std::string::npos) {
             binary_format = true;
         } else if (line == "end_header") {
@@ -260,12 +291,18 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
         }
     }
     printf("vertex count: %d\n",vertex_count);
+    printf("face count: %d\n",face_count);
+
 
     // Allocate vectors
     pos.reserve(3*vertex_count);
     ftr.reserve(3*vertex_count);
+    e0.resize(3*face_count+vertex_count); // triangles
+    e1.resize(3*face_count+vertex_count);
+
     
     // Read data
+    int _ei = 0;
     if (binary_format) {
         for (int i = 0; i < vertex_count; ++i) {
             float x, y, z;
@@ -305,7 +342,39 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
             ftr[3*i+0] = r / 255.0f;
             ftr[3*i+1] = g / 255.0f;
             ftr[3*i+2] = b / 255.0f;
+            e0[_ei] = i;
+            e1[_ei] = i;
+            _ei++;
         }
+
+        // -- read edges --
+        for (int i = 0; i < face_count; ++i) {
+            unsigned char vertex_count;
+            file.read(reinterpret_cast<char*>(&vertex_count), sizeof(unsigned char));
+            if (vertex_count != 3){
+                printf("vertex count: %d\n",vertex_count);
+            }
+            std::vector<int> vertices(vertex_count);
+            for (int j = 0; j < vertex_count; ++j) {
+                file.read(reinterpret_cast<char*>(&vertices[j]), sizeof(int));
+            }
+            
+            // Extract all edges from this face
+            for (int j = 0; j < vertex_count; ++j) {
+                if ((_ei-vertex_count) >= (6*face_count)){
+                    printf("Broke early! Error!\n");
+                    exit(1);
+                }
+                int a = vertices[j];
+                int b = vertices[(j + 1) % vertex_count];
+                e0[_ei] = std::min(a, b);
+                e1[_ei] = std::max(a, b);
+                _ei += 1;
+            }
+        }
+        //printf("n pairs: %d\n",_i);
+
+
     } else {
         for (int i = 0; i < vertex_count; ++i) {
             // -- read --
@@ -343,13 +412,16 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
     }
     
     size = vertex_count;
+    nfaces = face_count;
+    //nfaces = 3*face_count+vertex_count;
     file.close();
     return true;
 };
 
 bool ScanNetScene::write_ply(const std::filesystem::path& scene_path, 
                             const std::filesystem::path& output_root,
-                            float* ftrs, float* pos, int nnodes, uint32_t* labels) {
+                            float* ftrs, float* pos, uint32_t* edges, 
+                            int nnodes, int nedges, uint32_t* labels) {
 
     // -- helper --
     std::string line;
@@ -392,6 +464,9 @@ bool ScanNetScene::write_ply(const std::filesystem::path& scene_path,
     if (labels != nullptr) {
         header += "property uint label\n";
     }
+    header += "element edge " + std::to_string(nedges) + '\n';
+    header += "property int vertex1\n";
+    header += "property int vertex2\n";
     header += "end_header\n";
     file.write(header.c_str(), header.length());
 
@@ -430,25 +505,20 @@ bool ScanNetScene::write_ply(const std::filesystem::path& scene_path,
         }
 
     }
+
+    for (int i = 0; i < nedges; ++i){
+        //unsigned char len = 2;
+        int e0 = edges[2*i+0]; // ??
+        int e1 = edges[2*i+1];
+        // if ((i % 10000 == 0) || (i < 10) || (i > (nedges-10))) {        
+        //     printf("e0, e1: %d %d\n",e0,e1);
+        // }
+        //file.write(reinterpret_cast<const char*>(&len), sizeof(unsigned char));
+        file.write(reinterpret_cast<const char*>(&e0), sizeof(int));
+        file.write(reinterpret_cast<const char*>(&e1), sizeof(int));
+    }
     
     file.close();
     return true;
 
 };
-
-// // Usage
-// int main() {
-//     ScanNetScene scene;
-    
-//     if (scene.load_from_ply("/path/to/scene0000_00_vh_clean_2.ply")) {
-//         std::cout << "Loaded " << scene.size << " points" << std::endl;
-//         std::cout << "Position vector size: " << scene.pos.size() << std::endl;
-//         std::cout << "Feature vector size: " << scene.ftr.size() << std::endl;
-        
-//         // Now you can copy to CUDA:
-//         // cudaMemcpy(cuda_pos, scene.pos.data(), scene.size * sizeof(float3), cudaMemcpyHostToDevice);
-//         // cudaMemcpy(cuda_ftr, scene.ftr.data(), scene.size * sizeof(float3), cudaMemcpyHostToDevice);
-//     }
-    
-//     return 0;
-// }
