@@ -150,7 +150,7 @@ int main(int argc, char **argv) {
     double timer=0;
     int* spix_prev = nullptr;
     SuperpixelParams* params_prev = nullptr;
-    for (int _ix = 0; _ix < nscenes; _ix++){
+    for (int _ix = 0; _ix < nbatches; _ix++){
 
 
             /**********************************************

@@ -160,11 +160,12 @@ __global__ void InitVeronoiSeg(uint64_t* spix, uint64_t* nspix, float3* pos, uin
   // -- ... --
   int ptr_offset = ptr[bx];
   int nnodes = ptr[bx+1] - ptr_offset;
-  //float S = std::pow(static_cast<float>(nnodes), 1.0f / 3.0f);
+  // if (bx == 1){
+  //   printf("bx,nnodes: %d,%d\n",bx,nnodes);
+  // }
   float S = 0.01 * sp_size; // about 1 cm spacing.
-  if (node_ix >= nnodes){ return; }
-  int local_node_ix = node_ix;
-  node_ix = node_ix + ptr_offset;
+  int local_node_ix = node_ix - ptr_offset;
+  if (local_node_ix >= nnodes){ return; }
 
   // -- bounds in 3d space --
   // int xlen = dim_sizes[6*bx+1] - dim_sizes[6*bx+0];

@@ -117,6 +117,7 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
     int nbatch = scene_files.size();
     int nnodes;
     cudaMemcpy(&nnodes,&ptr_cu[nbatch],sizeof(int),cudaMemcpyDeviceToHost);
+    printf("nnodes: %d\n",nnodes);
     
     // -- allocate --
     float* ftrs = (float*)malloc(3*nnodes*sizeof(float));
@@ -134,7 +135,6 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
     //cudaMemcpy(dim_sizes,dim_sizes_cu,2*nbatch*sizeof(float3),cudaMemcpyDeviceToHost);
     cudaMemcpy(ptr,ptr_cu,(nbatch+1)*sizeof(int),cudaMemcpyDeviceToHost);
     if (labels_cu != nullptr){
-        printf("hi.\n");
         cudaMemcpy(labels,labels_cu,nnodes*sizeof(uint64_t),cudaMemcpyDeviceToHost);
     }
     cudaDeviceSynchronize();
@@ -410,6 +410,7 @@ bool ScanNetScene::write_ply(const std::filesystem::path& scene_path,
         alpha = 255;
         label = (labels != nullptr) ? static_cast<uint32_t>(labels[i]) : 0;
         //printf("label: %ld\n",label);
+        //printf("x,y,z r,g,b: %2.2f %2.2f %2.2f %2.2f %2.2f %2.2f\n",x,y,z,ftrs[3*i+0],ftrs[3*i+1] ,ftrs[3*i+2] );
 
 
         // -- write --

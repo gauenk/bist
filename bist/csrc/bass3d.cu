@@ -408,14 +408,14 @@ run_bass3d(float3* ftrs, float3* pos, uint32_t* bids, int* ptr, float* dim_sizes
     // -- compactify spix --
     uint64_t* prev_nspix = (uint64_t*)easy_allocate(nbatch,sizeof(uint64_t));
     cudaMemset(prev_nspix,0,nbatch*sizeof(uint64_t));
-    uint64_t* nspix = run_compactify(spix, bids, prev_nspix, init_nspix, nbatch, nnodes);
+    //uint64_t* nspix = run_compactify(spix, bids, prev_nspix, init_nspix, nbatch, nnodes);
 
     bool* border = nullptr;
     SuperpixelParams* params = nullptr;
 
     // -- free memory --
     cudaDeviceSynchronize();
-    cudaFree(nspix);
+    //cudaFree(nspix);
     cudaFree(prev_nspix);
     cudaFree(init_nspix);
     
