@@ -139,8 +139,8 @@ __global__ void InitSquareSeg(int* seg, int sp_size,
 
 **************************************************/
 
-__host__ uint64_t* init_seg_3d(uint64_t* spix, float3* pos, uint32_t* bids, int* ptr, float* dim_sizes, int sp_size, int nbatch, int nnodes){
-  uint64_t* nspix = (uint64_t*)easy_allocate(nbatch,sizeof(uint64_t));
+__host__ uint32_t* init_seg_3d(uint32_t* spix, float3* pos, uint8_t* bids, int* ptr, float* dim_sizes, int sp_size, int nbatch, int nnodes){
+  uint32_t* nspix = (uint32_t*)easy_allocate(nbatch,sizeof(uint32_t));
   dim3 nthreads(THREADS_PER_BLOCK);
   int nblocks_nodes =  ceil(double(nnodes) /double(THREADS_PER_BLOCK));
   dim3 nblocks(nblocks_nodes);
@@ -149,7 +149,7 @@ __host__ uint64_t* init_seg_3d(uint64_t* spix, float3* pos, uint32_t* bids, int*
 }
 
 
-__global__ void InitVeronoiSeg(uint64_t* spix, uint64_t* nspix, float3* pos, uint32_t* bids, int* ptr, float* dim_sizes, int sp_size, int nnodes_total){
+__global__ void InitVeronoiSeg(uint32_t* spix, uint32_t* nspix, float3* pos, uint8_t* bids, int* ptr, float* dim_sizes, int sp_size, int nnodes_total){
 	
   // -- unpack threads --
   int node_ix = threadIdx.x + blockIdx.x * blockDim.x;
@@ -218,7 +218,7 @@ __global__ void InitVeronoiSeg(uint64_t* spix, uint64_t* nspix, float3* pos, uin
       (yi < ymin) || (ymax < yi) ||
       (zi < zmin) || (zmax < zi)){
         printf("[(%d,%d) (%d,%d) (%d,%d)] x,y,z,S: %d %d %d %2.2f\n",xmin,xmax,ymin,ymax,zmin,zmax,xi,yi,zi,S);
-        spix[node_ix] = -1;
+        spix[node_ix] = UINT32_MAX;
         return;
       }
 

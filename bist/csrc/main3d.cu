@@ -166,9 +166,10 @@ int main(int argc, char **argv) {
             auto read_out = read_scene(scene_files_b);
             float3* ftrs = std::get<0>(read_out);
             float3* pos = std::get<1>(read_out);
-            uint32_t* bids = std::get<2>(read_out);
-            int* ptr = std::get<3>(read_out);
-            float* dim_sizes = std::get<4>(read_out);
+            uint32_t* edges = std::get<2>(read_out);
+            uint8_t* bids = std::get<3>(read_out);
+            int* ptr = std::get<4>(read_out);
+            float* dim_sizes = std::get<5>(read_out);
             int batchsize = scene_files_b.size();
             cudaDeviceSynchronize();
 
@@ -185,33 +186,32 @@ int main(int argc, char **argv) {
 
             **********************************************/
 
-            // -- start timer --
-            clock_t start,finish;
-            cudaDeviceSynchronize();
-            start = clock();
-
             // -- single image --
-            uint64_t* spix = nullptr;
+            uint32_t* spix = nullptr;
             bool* border = nullptr;
             int nspix = -1;
             SuperpixelParams* params = nullptr;
-            cv::String log_root = string(output_root)+"log/";
 
+            cv::String log_root = string(output_root)+"log/";
             Logger* logger = nullptr;
             // if (logging==1){
             //   ensureDirectoryExists(log_root);
             //   logger = new Logger3d(log_root,count,height,width,10*0,niters,4);
             // }
 
+            // -- start timer --
+            clock_t start,finish;
+            cudaDeviceSynchronize();
+            start = clock();
+
             // -- run segmentation --
-            auto spix_out = run_bass3d(ftrs, pos, bids, ptr, dim_sizes, batchsize,
-                                 niters, niters_seg, sm_start, sp_size,
-                                 sigma2_app, sigma2_size, potts, alpha,
-                                 split_alpha, target_nspix, logger);
+            auto spix_out = run_bass3d(ftrs, pos, edges, bids, ptr, dim_sizes, batchsize,
+                                        niters, niters_seg, sm_start, sp_size,
+                                        sigma2_app, sigma2_size, potts, alpha,
+                                        split_alpha, target_nspix, logger);
             spix = std::get<0>(spix_out);
             border = std::get<1>(spix_out);
             params = std::get<2>(spix_out);
-
 
             // -- benchmarking/tracking --
             niters_ave += niters;

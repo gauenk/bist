@@ -19,50 +19,50 @@
 
 // Alternative version with better initialization handling
 __global__ void count_and_assign_labels(
-    uint64_t* labels,
-    const uint32_t* bids,
-    uint64_t* nspix,
-    uint64_t* nspix_old,
-    uint64_t* max_new_csum,
-    uint64_t* label2index_shell,
-    uint64_t* relabel_map,
+    uint32_t* labels,
+    const uint8_t* bids,
+    uint32_t* nspix,
+    uint32_t* nspix_old,
+    uint32_t* max_new_csum,
+    uint32_t* label2index_shell,
+    uint32_t* relabel_map,
     int nbatch, int nnodes) {
 
     // one index per node
     int node_ix = blockIdx.x * blockDim.x + threadIdx.x;
     if (node_ix >= nnodes) return;
     int bx = bids[node_ix];
-    uint64_t label = labels[node_ix];
-    uint64_t _nspix_old = nspix_old[bx];
+    uint32_t label = labels[node_ix];
+    uint32_t _nspix_old = nspix_old[bx];
     if (label < _nspix_old) { // skip me!
         return;
     }
    
     // Claim this slot
     int shell_index = (label - _nspix_old) + max_new_csum[bx];
-    uint64_t old_label = atomicCAS(
-        (unsigned long long*)&label2index_shell[shell_index],
-        UINT64_MAX, (unsigned long long)label
+    uint32_t old_label = atomicCAS(
+        (unsigned int*)&label2index_shell[shell_index],
+        UINT32_MAX, (unsigned int)label
     );
-    unsigned long long one = 1;
-    unsigned long long zero = 0;
-    if (old_label == UINT64_MAX) {
+    unsigned int one = 1;
+    unsigned int zero = 0;
+    if (old_label == UINT32_MAX) {
         // Successfully claimed slot - assign new label
-        unsigned long long new_label = atomicAdd((unsigned long long*)&nspix[bx],one);
+        unsigned int new_label = atomicAdd((unsigned int*)&nspix[bx],one);
         
         // Atomically set the label (using -1 as sentinel for "being written")
-        atomicExch((unsigned long long*)&relabel_map[shell_index], new_label);
+        atomicExch((unsigned int*)&relabel_map[shell_index], new_label);
         labels[node_ix] = new_label;
         return;
         
     } else if (old_label == label) {
         // Hash exists - spin until label is available
-        unsigned long long _label;
+        unsigned int _label;
         int spin_count = 0;
         do {
-            _label = atomicAdd((unsigned long long*)&relabel_map[shell_index], zero); // Atomic read
+            _label = atomicAdd((unsigned int*)&relabel_map[shell_index], zero); // Atomic read
             //if (_label >= 0) break;
-            if( _label != UINT64_MAX) break;
+            if( _label != UINT32_MAX) break;
             
             // Yield occasionally to prevent warp divergence issues
             if (++spin_count > 100) {
@@ -70,7 +70,7 @@ __global__ void count_and_assign_labels(
                 spin_count = 0;
             }
         // } while (_label < 0);
-        } while (_label == UINT64_MAX);
+        } while (_label == UINT32_MAX);
 
         labels[node_ix] = _label;
         return;
@@ -81,21 +81,21 @@ __global__ void count_and_assign_labels(
 
 struct diff_op {
     __host__ __device__
-    uint64_t operator()(const thrust::tuple<uint64_t,uint64_t>& t) const {
+    uint32_t operator()(const thrust::tuple<uint32_t,uint32_t>& t) const {
         return thrust::get<1>(t) - thrust::get<0>(t);
     }
 };
 
 
-uint64_t* run_compactify(uint64_t* spix, uint32_t* bids, uint64_t* nspix_old, uint64_t* max_new_nspix, int nbatch, int nnodes) {
+uint32_t* run_compactify(uint32_t* spix, uint8_t* bids, uint32_t* nspix_old, uint32_t* max_new_nspix, int nbatch, int nnodes) {
 
     // get the cummulative sum of the differences
-    uint64_t* max_new_csum = (uint64_t*)easy_allocate((nbatch+1),sizeof(uint64_t));
+    uint32_t* max_new_csum = (uint32_t*)easy_allocate((nbatch+1),sizeof(uint32_t));
     {
-        cudaMemset(max_new_csum, 0, sizeof(uint64_t));
-        thrust::device_ptr<uint64_t> in0_ptr(nspix_old);
-        thrust::device_ptr<uint64_t> in1_ptr(max_new_nspix);
-        thrust::device_ptr<uint64_t> out_ptr(max_new_csum);
+        cudaMemset(max_new_csum, 0, sizeof(uint32_t));
+        thrust::device_ptr<uint32_t> in0_ptr(nspix_old);
+        thrust::device_ptr<uint32_t> in1_ptr(max_new_nspix);
+        thrust::device_ptr<uint32_t> out_ptr(max_new_csum);
         auto first = thrust::make_zip_iterator(thrust::make_tuple(in0_ptr, in1_ptr));
         auto last  = thrust::make_zip_iterator(thrust::make_tuple(in0_ptr + nbatch, in1_ptr + nbatch));
         // Inclusive scan over the difference, writing to out[1..N]
@@ -106,8 +106,8 @@ uint64_t* run_compactify(uint64_t* spix, uint32_t* bids, uint64_t* nspix_old, ui
             out_ptr + 1
         );
     }
-    uint64_t max_num_new;
-    cudaMemcpy(&max_num_new,&max_new_csum[nbatch],sizeof(uint64_t),cudaMemcpyDeviceToHost);
+    uint32_t max_num_new;
+    cudaMemcpy(&max_num_new,&max_new_csum[nbatch],sizeof(uint32_t),cudaMemcpyDeviceToHost);
     printf("max_new_csum[nbatch]: %d\n",max_num_new);
     
     // Step 2: Count unique hashes and create label map
@@ -119,14 +119,14 @@ uint64_t* run_compactify(uint64_t* spix, uint32_t* bids, uint64_t* nspix_old, ui
     // after init i don't think there is any problem since "sum of max nspix per batch" would be pretty close to the actual number of superpixels...
     // yeah pretty minor after init...
     // but the init case is just sooo bad... well for now we spike it i guess.
-    //uint64_t* label_map = easy_allocate(max_num_new,sizeof(uint64_t));
-    uint64_t* nspix = (uint64_t*)easy_allocate(nbatch,sizeof(uint64_t));
-    cudaMemcpy(nspix,nspix_old,nbatch*sizeof(uint64_t),cudaMemcpyDeviceToDevice);
-    uint64_t* label2index_shell = (uint64_t*)easy_allocate(max_num_new,sizeof(uint64_t));
-    cudaMemset(label2index_shell, 0xFF, max_num_new * sizeof(uint64_t));
-    //uint32_t* relabel_bids = easy_allocate(max_num_new,sizeof(uint64_t));
-    uint64_t* relabel_map = (uint64_t*)easy_allocate(max_num_new,sizeof(uint64_t));
-    cudaMemset(relabel_map, 0xFF, max_num_new * sizeof(uint64_t));
+    //uint32_t* label_map = easy_allocate(max_num_new,sizeof(uint32_t));
+    uint32_t* nspix = (uint32_t*)easy_allocate(nbatch,sizeof(uint32_t));
+    cudaMemcpy(nspix,nspix_old,nbatch*sizeof(uint32_t),cudaMemcpyDeviceToDevice);
+    uint32_t* label2index_shell = (uint32_t*)easy_allocate(max_num_new,sizeof(uint32_t));
+    cudaMemset(label2index_shell, 0xFF, max_num_new * sizeof(uint32_t));
+    //uint32_t* relabel_bids = easy_allocate(max_num_new,sizeof(uint32_t));
+    uint32_t* relabel_map = (uint32_t*)easy_allocate(max_num_new,sizeof(uint32_t));
+    cudaMemset(relabel_map, 0xFF, max_num_new * sizeof(uint32_t));
     // todo; relabel_map init to "-1"
    
     dim3 count_block(256);

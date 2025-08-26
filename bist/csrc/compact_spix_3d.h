@@ -8,4 +8,4 @@
 #include <cfloat>
 
 
-uint64_t* run_compactify(uint64_t* spix, uint32_t* bids, uint64_t* nspix_old, uint64_t* max_new_nspix, int nbatch, int nnodes);
+uint32_t* run_compactify(uint32_t* spix, uint8_t* bids, uint32_t* nspix_old, uint32_t* max_new_nspix, int nbatch, int nnodes);

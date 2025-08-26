@@ -376,8 +376,8 @@
 
 
 
-std::tuple<uint64_t*,bool*,SuperpixelParams*>
-run_bass3d(float3* ftrs, float3* pos, uint32_t* bids, int* ptr, float* dim_sizes, int nbatch,
+std::tuple<uint32_t*,bool*,SuperpixelParams*>
+run_bass3d(float3* ftrs, float3* pos, uint32_t* edges, uint8_t* bids, int* ptr, float* dim_sizes, int nbatch,
            int niters, int niters_seg, int sm_start, int sp_size,
            float sigma2_app, float sigma2_size, float potts,
            float alpha_hastings, float split_alpha, int target_nspix, Logger* logger){
@@ -390,8 +390,8 @@ run_bass3d(float3* ftrs, float3* pos, uint32_t* bids, int* ptr, float* dim_sizes
     // uint64_t* spix_ptr = thrust::raw_pointer_cast(spix.data());
 
     // -- init spix --
-    uint64_t* spix = (uint64_t*)easy_allocate(nnodes,sizeof(uint64_t));
-    uint64_t* init_nspix = init_seg_3d(spix, pos, bids, ptr, dim_sizes, sp_size, nbatch, nnodes);
+    uint32_t* spix = (uint32_t*)easy_allocate(nnodes,sizeof(uint32_t));
+    uint32_t* init_nspix = init_seg_3d(spix, pos, bids, ptr, dim_sizes, sp_size, nbatch, nnodes);
     
     // // Cumulative sum & max over nspix
     // uint64_t* nspix_csum = (uint64_t*)easy_allocate((nbatch+1),sizeof(uint64_t));
@@ -406,16 +406,16 @@ run_bass3d(float3* ftrs, float3* pos, uint32_t* bids, int* ptr, float* dim_sizes
     // }
 
     // -- compactify spix --
-    uint64_t* prev_nspix = (uint64_t*)easy_allocate(nbatch,sizeof(uint64_t));
-    cudaMemset(prev_nspix,0,nbatch*sizeof(uint64_t));
-    uint64_t* nspix = run_compactify(spix, bids, prev_nspix, init_nspix, nbatch, nnodes);
+    uint32_t* prev_nspix = (uint32_t*)easy_allocate(nbatch,sizeof(uint32_t));
+    cudaMemset(prev_nspix,0,nbatch*sizeof(uint32_t));
+    uint32_t* nspix = run_compactify(spix, bids, prev_nspix, init_nspix, nbatch, nnodes);
 
     bool* border = nullptr;
     SuperpixelParams* params = nullptr;
 
     // -- free memory --
     cudaDeviceSynchronize();
-    //cudaFree(nspix);
+    cudaFree(nspix);
     cudaFree(prev_nspix);
     cudaFree(init_nspix);
     

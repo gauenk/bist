@@ -7,7 +7,9 @@
 #include <algorithm>
 #include <cfloat>
 
+#include "extract_edges.h"
 #include "init_utils.h"
+
 
 #include <vector>
 #include <thrust/device_ptr.h>
@@ -18,7 +20,7 @@
 #include "scannet_reader.h"
 
 // -- read each scene --
-std::tuple<float3*,float3*,uint32_t*,int*,float*>
+std::tuple<float3*,float3*,uint32_t*,uint8_t*,int*,float*>
 read_scene(const std::vector<std::filesystem::path>& scene_files){
 
     // -- read sizes --
@@ -39,7 +41,7 @@ read_scene(const std::vector<std::filesystem::path>& scene_files){
     std::vector<float> ftrs(3*total_nodes);
     std::vector<float> pos(3*total_nodes);
     std::vector<float> dim_sizes(6*batchsize);
-    std::vector<uint32_t> bids(total_nodes);
+    std::vector<uint8_t> bids(total_nodes);
 
     // Second pass: append data
     int _bx = 0;
@@ -92,23 +94,24 @@ read_scene(const std::vector<std::filesystem::path>& scene_files){
     // -- copy --
     float3* ftrs_cu = (float3*)easy_allocate(total_nodes,sizeof(float3));
     float3* pos_cu = (float3*)easy_allocate(total_nodes,sizeof(float3));
-    uint32_t* bids_cu = (uint32_t*)easy_allocate(total_nodes,sizeof(uint32_t));
+    uint32_t* edges_cu = nullptr;
+    uint8_t* bids_cu = (uint8_t*)easy_allocate(total_nodes,sizeof(uint8_t));
     int* ptr_cu = (int*)easy_allocate(batchsize+1,sizeof(int));
     float* dim_sizes_cu = (float*)easy_allocate(6*batchsize,sizeof(float));
     cudaDeviceSynchronize();
     cudaMemcpy(ftrs_cu,thrust::raw_pointer_cast(ftrs.data()),total_nodes*sizeof(float3),cudaMemcpyHostToDevice);
     cudaMemcpy(pos_cu,thrust::raw_pointer_cast(pos.data()),total_nodes*sizeof(float3),cudaMemcpyHostToDevice);
-    cudaMemcpy(bids_cu,thrust::raw_pointer_cast(bids.data()),total_nodes*sizeof(uint32_t),cudaMemcpyHostToDevice);
+    cudaMemcpy(bids_cu,thrust::raw_pointer_cast(bids.data()),total_nodes*sizeof(uint8_t),cudaMemcpyHostToDevice);
     cudaMemcpy(ptr_cu,ptr_cpu,(batchsize+1)*sizeof(int),cudaMemcpyHostToDevice);
     cudaMemcpy(dim_sizes_cu,thrust::raw_pointer_cast(dim_sizes.data()),6*batchsize*sizeof(float),cudaMemcpyHostToDevice);
-    return std::tuple(ftrs_cu,pos_cu,bids_cu,ptr_cu,dim_sizes_cu);
+    return std::tuple(ftrs_cu,pos_cu,edges_cu,bids_cu,ptr_cu,dim_sizes_cu);
 
 }
 
 // -- write each scene; [nnodes == spix if point-cloud is the superpixel point cloud] --
 bool write_scene(const std::vector<std::filesystem::path>& scene_files, 
                 const std::filesystem::path& output_root, 
-                float3* ftrs_cu, float3* pos_cu, int* ptr_cu, uint64_t* labels_cu){
+                float3* ftrs_cu, float3* pos_cu, int* ptr_cu, uint32_t* labels_cu){
 
     // -- sync before io --
     cudaDeviceSynchronize();
@@ -124,9 +127,9 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
     float* pos = (float*)malloc(3*nnodes*sizeof(float));
     //float* dim_sizes = (float*)malloc(6*nbatch,sizeof(float));
     int* ptr = (int*)malloc((nbatch+1)*sizeof(int));
-    uint64_t* labels = nullptr;
+    uint32_t* labels = nullptr;
     if (labels_cu != nullptr){
-        labels = (uint64_t*)malloc(nnodes*sizeof(uint64_t));
+        labels = (uint32_t*)malloc(nnodes*sizeof(uint32_t));
     }
 
     // -- read to cpu --
@@ -135,7 +138,7 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
     //cudaMemcpy(dim_sizes,dim_sizes_cu,2*nbatch*sizeof(float3),cudaMemcpyDeviceToHost);
     cudaMemcpy(ptr,ptr_cu,(nbatch+1)*sizeof(int),cudaMemcpyDeviceToHost);
     if (labels_cu != nullptr){
-        cudaMemcpy(labels,labels_cu,nnodes*sizeof(uint64_t),cudaMemcpyDeviceToHost);
+        cudaMemcpy(labels,labels_cu,nnodes*sizeof(uint32_t),cudaMemcpyDeviceToHost);
     }
     cudaDeviceSynchronize();
     // Second pass: append data
@@ -148,7 +151,7 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
         // -- get pointers --
         float* ftrs_b = &ftrs[3*ptr[ix]];
         float* pos_b = &pos[3*ptr[ix]];
-        uint64_t* labels_b = (labels != nullptr) ? &labels[ptr[ix]] : nullptr;
+        uint32_t* labels_b = (labels != nullptr) ? &labels[ptr[ix]] : nullptr;
         int nnodes = ptr[ix+1] - ptr[ix];
         if (labels!=nullptr){
             printf("labels_b: %ld\n",labels_b[0]);
@@ -346,7 +349,7 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
 
 bool ScanNetScene::write_ply(const std::filesystem::path& scene_path, 
                             const std::filesystem::path& output_root,
-                            float* ftrs, float* pos, int nnodes, uint64_t* labels) {
+                            float* ftrs, float* pos, int nnodes, uint32_t* labels) {
 
     // -- helper --
     std::string line;
