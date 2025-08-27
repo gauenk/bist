@@ -22,7 +22,7 @@
 #include "scannet_reader.h"
 
 // -- read each scene --
-std::tuple<float3*,float3*,uint32_t*,uint8_t*,int*,int*,float*>
+std::tuple<float3*,float3*,uint32_t*,uint8_t*,uint8_t*,int*,int*,float*>
 read_scene(const std::vector<std::filesystem::path>& scene_files){
 
     // -- read sizes --
@@ -40,11 +40,12 @@ read_scene(const std::vector<std::filesystem::path>& scene_files){
     printf("total nodes: %d\n",total_nodes);
 
     // Reserve space for all points
-    std::vector<float> ftrs(3*total_nodes);
-    std::vector<float> pos(3*total_nodes);
-    std::vector<float> dim_sizes(6*batchsize);
-    std::vector<uint8_t> bids(total_nodes);
-    thrust::device_vector<uint32_t> edges;
+    std::vector<float> ftrs(3*total_nodes,0);
+    std::vector<float> pos(3*total_nodes,0);
+    std::vector<float> dim_sizes(6*batchsize,0);
+    std::vector<uint8_t> bids(total_nodes,0);
+    thrust::device_vector<uint32_t> edges{};
+    std::vector<uint8_t> ebids{};
     int* eptr_cpu = (int*)malloc((batchsize+1) * sizeof(int));
     eptr_cpu[0] = 0;
 
@@ -65,11 +66,14 @@ read_scene(const std::vector<std::filesystem::path>& scene_files){
         std::fill(bids.begin() + _ix, bids.begin() + _ix + scene.size, _bx);
 
         // -- extract edges from edge-pairs --
-
         thrust::device_vector<uint32_t> edges_b = extract_edges_from_pairs(scene.e0,scene.e1);
         size_t _size = edges.size();
-        edges.resize(_size + edges_b.size());
-        thrust::copy(edges_b.begin(), edges_b.end(), edges.begin() + _size);
+        // edges.resize(_size + edges_b.size());
+        // cudaDeviceSynchronize();
+        // thrust::copy(edges_b.begin(), edges_b.end(), edges.begin() + _size);
+        edges.insert(edges.end(), edges_b.begin(), edges_b.end());
+        //ebids.resize(_size/2 + edges_b.size()/2, _bx);
+        ebids.insert(ebids.end(), edges_b.size()/2, _bx);
         eptr_cpu[_bx+1] = eptr_cpu[_bx]+edges_b.size()/2;
         printf("eptr_cpu: %d %d\n", eptr_cpu[_bx],eptr_cpu[_bx+1]);
 
@@ -85,6 +89,7 @@ read_scene(const std::vector<std::filesystem::path>& scene_files){
     }
 
     // -- view --
+    printf("_ix: %d\n",_ix);
     std::cout << "=== Scene Batch Info ===" << std::endl;
     std::cout << "Batch size: " << batchsize << std::endl;
     std::cout << "Total nodes: " << total_nodes << std::endl;
@@ -107,22 +112,31 @@ read_scene(const std::vector<std::filesystem::path>& scene_files){
 
     // -- copy --
     int nedges = eptr_cpu[batchsize];
+    printf("nedges: %d,%d\n",nedges,ebids.size());
     float3* ftrs_cu = (float3*)easy_allocate(total_nodes,sizeof(float3));
     float3* pos_cu = (float3*)easy_allocate(total_nodes,sizeof(float3));
     uint32_t* edges_cu = (uint32_t*)easy_allocate(2*nedges,sizeof(uint32_t));
     uint8_t* bids_cu = (uint8_t*)easy_allocate(total_nodes,sizeof(uint8_t));
+    uint8_t* ebids_cu = (uint8_t*)easy_allocate(nedges,sizeof(uint8_t));
     int* ptr_cu = (int*)easy_allocate(batchsize+1,sizeof(int));
     int* eptr_cu = (int*)easy_allocate(batchsize+1,sizeof(int));
     float* dim_sizes_cu = (float*)easy_allocate(6*batchsize,sizeof(float));
+
     cudaDeviceSynchronize();
     cudaMemcpy(ftrs_cu,thrust::raw_pointer_cast(ftrs.data()),total_nodes*sizeof(float3),cudaMemcpyHostToDevice);
     cudaMemcpy(pos_cu,thrust::raw_pointer_cast(pos.data()),total_nodes*sizeof(float3),cudaMemcpyHostToDevice);
     cudaMemcpy(edges_cu,thrust::raw_pointer_cast(edges.data()),2*nedges*sizeof(uint32_t),cudaMemcpyDeviceToDevice);
     cudaMemcpy(bids_cu,thrust::raw_pointer_cast(bids.data()),total_nodes*sizeof(uint8_t),cudaMemcpyHostToDevice);
+    cudaMemcpy(ebids_cu,thrust::raw_pointer_cast(ebids.data()),nedges*sizeof(uint8_t),cudaMemcpyHostToDevice);
     cudaMemcpy(ptr_cu,ptr_cpu,(batchsize+1)*sizeof(int),cudaMemcpyHostToDevice);
     cudaMemcpy(eptr_cu,eptr_cpu,(batchsize+1)*sizeof(int),cudaMemcpyHostToDevice);
     cudaMemcpy(dim_sizes_cu,thrust::raw_pointer_cast(dim_sizes.data()),6*batchsize*sizeof(float),cudaMemcpyHostToDevice);
-    return std::tuple(ftrs_cu,pos_cu,edges_cu,bids_cu,ptr_cu,eptr_cu,dim_sizes_cu);
+
+    // -- free --
+    free(ptr_cpu);
+    free(eptr_cpu);
+
+    return std::tuple(ftrs_cu,pos_cu,edges_cu,bids_cu,ebids_cu,ptr_cu,eptr_cu,dim_sizes_cu);
 
 }
 
@@ -297,8 +311,8 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
     // Allocate vectors
     pos.reserve(3*vertex_count);
     ftr.reserve(3*vertex_count);
-    e0.resize(3*face_count+vertex_count); // triangles
-    e1.resize(3*face_count+vertex_count);
+    e0.resize(3*face_count); // triangles
+    e1.resize(3*face_count);
 
     
     // Read data
@@ -342,9 +356,9 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
             ftr[3*i+0] = r / 255.0f;
             ftr[3*i+1] = g / 255.0f;
             ftr[3*i+2] = b / 255.0f;
-            e0[_ei] = i;
-            e1[_ei] = i;
-            _ei++;
+            // e0[_ei] = i;
+            // e1[_ei] = i;
+            // _ei++;
         }
 
         // -- read edges --
@@ -367,13 +381,17 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
                 }
                 int a = vertices[j];
                 int b = vertices[(j + 1) % vertex_count];
+                // if (a == b){ 
+                //     printf("self loop? %d\n",a);
+                //     continue; 
+                // }
                 e0[_ei] = std::min(a, b);
                 e1[_ei] = std::max(a, b);
                 _ei += 1;
             }
         }
-        //printf("n pairs: %d\n",_i);
-
+        //printf("n pairs: %d\n",_ei);
+        assert(_ei == e0.size()); // must fill the vector.
 
     } else {
         for (int i = 0; i < vertex_count; ++i) {

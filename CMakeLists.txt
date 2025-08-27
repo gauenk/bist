@@ -33,6 +33,8 @@ set(SHARED_SOURCES
   bist/csrc/scannet_reader.cu
   bist/csrc/compact_spix_3d.cu
   bist/csrc/extract_edges.cu
+  bist/csrc/csr_edges.cu
+  bist/csrc/graph_coloring.cu
   bist/csrc/main_utils.cu
   bist/csrc/file_io.cpp
   bist/csrc/logger.cu
@@ -67,6 +69,8 @@ set_source_files_properties(
     bist/csrc/scannet_reader.cu
     bist/csrc/compact_spix_3d.cu
     bist/csrc/extract_edges.cu
+    bist/csrc/csr_edges.cu
+    bist/csrc/graph_coloring.cu
     bist/csrc/logger.cu
     bist/csrc/bass.cu
     bist/csrc/bass3d.cu

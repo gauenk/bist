@@ -78,7 +78,7 @@ thrust::device_vector<uint32_t> extract_edges_from_pairs(std::vector<uint32_t>& 
 
     // -- init/allocate --
     int N = e0.size();
-    printf("N: %d\n",N);
+    //printf("N: %d\n",N);
     if (N == 0){
         printf("Error -- no edges at all.\n");
         exit(1);
@@ -162,6 +162,7 @@ thrust::device_vector<uint32_t> extract_edges_from_pairs(std::vector<uint32_t>& 
     temp_bytes = 0; // reset
     unsigned int* d_num_selected;
     cudaMalloc(&d_num_selected, sizeof(unsigned int));
+    cudaMemset(d_num_selected, 0, sizeof(unsigned int));
 
     // Step 4a: determine temp storage size
     cub::DeviceSelect::Flagged(
@@ -178,22 +179,22 @@ thrust::device_vector<uint32_t> extract_edges_from_pairs(std::vector<uint32_t>& 
     cub::DeviceSelect::Flagged(
         d_temp, temp_bytes,
         thrust::raw_pointer_cast(d_u_sorted.data()),
-        //thrust::raw_pointer_cast(d_u_unique.data()),
         thrust::raw_pointer_cast(d_flags.data()),
         d_num_selected,
         N
     );
+    unsigned int nedges;
+    cudaMemcpy(&nedges,d_num_selected,sizeof(unsigned int),cudaMemcpyDeviceToHost);
     cub::DeviceSelect::Flagged(
         d_temp, temp_bytes,
         thrust::raw_pointer_cast(d_v_sorted.data()),
-        //thrust::raw_pointer_cast(d_v_unique.data()),
         thrust::raw_pointer_cast(d_flags.data()),
         d_num_selected,
         N
     );
 
-    unsigned int nedges;
-    cudaMemcpy(&nedges,d_num_selected,sizeof(unsigned int),cudaMemcpyDeviceToHost);
+    //unsigned int nedges;
+    //cudaMemcpy(&nedges,d_num_selected,sizeof(unsigned int),cudaMemcpyDeviceToHost);
     cudaFree(d_num_selected);
     cudaFree(d_temp);
 
@@ -209,6 +210,7 @@ thrust::device_vector<uint32_t> extract_edges_from_pairs(std::vector<uint32_t>& 
     //     printf("[%d] (%d,%d)\n",i,d_u_view[i],d_v_view[i]);
     // }
     // }
+    //cudaDeviceSynchronize();
 
     // -- Part 3: Read # Unique Edges and Reformat Output --
     unsigned int* d_u_ptr = thrust::raw_pointer_cast(d_u_sorted.data());

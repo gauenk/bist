@@ -36,7 +36,7 @@ def main():
         plydata = PlyData.read(gt_fn)
         data = np.stack(np.array(plydata['face'].data)['vertex_indices'],axis=0)
         gt_edges = get_edges_from_faces(data)
-        #print(gt_edges.shape)
+        print(gt_edges.shape)
 
         fn = "output/scannetv2/%s/%s_vh_clean_2.ply" % (scene_name,scene_name)
         plydata = PlyData.read(fn)
@@ -45,8 +45,8 @@ def main():
         data = np.array(plydata['vertex'].data)
         x = data['x']
         nnodes = len(x)
-        print(edges.shape[0] - nnodes)
-
+        #print(edges.shape[0] - nnodes)
+        print(edges.shape)
         vertex_counts = np.bincount(edges.flatten())
         #print(np.min(vertex_counts),np.max(vertex_counts))
 

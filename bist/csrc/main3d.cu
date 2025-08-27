@@ -29,6 +29,8 @@
 
 //#include "pointcloud_reader.h"
 #include "scannet_reader.h"
+#include "csr_edges.h"
+#include "graph_coloring.h"
 
 using namespace std;
 
@@ -162,17 +164,38 @@ int main(int argc, char **argv) {
             // -- read batch of scenes --
             int s_index = _ix*batchsize;
             int e_index = std::min((_ix+1)*batchsize, (int)scene_files.size());
+            int bsize = e_index - s_index;
             std::vector<std::filesystem::path> scene_files_b(scene_files.begin() + s_index, scene_files.begin() + e_index);
             auto read_out = read_scene(scene_files_b);
             float3* ftrs = std::get<0>(read_out);
             float3* pos = std::get<1>(read_out);
             uint32_t* edges = std::get<2>(read_out);
             uint8_t* bids = std::get<3>(read_out);
-            int* ptr = std::get<4>(read_out);
-            int* eptr = std::get<5>(read_out);
-            float* dim_sizes = std::get<6>(read_out);
-            int batchsize = scene_files_b.size();
+            uint8_t* ebids = std::get<4>(read_out);
+            int* vptr = std::get<5>(read_out);
+            int* eptr = std::get<6>(read_out);
+            float* dim_sizes = std::get<7>(read_out);
+            int nbatch_b = scene_files_b.size();
             cudaDeviceSynchronize();
+
+            // -- some reading; idk why not just return it by whatever --
+            int V_total;
+            cudaMemcpy(&V_total,&vptr[nbatch_b],sizeof(int),cudaMemcpyDeviceToHost);
+            int E_total;
+            cudaMemcpy(&E_total,&eptr[nbatch_b],sizeof(int),cudaMemcpyDeviceToHost);
+
+            // -- convert to csr --
+            uint32_t* csr_edges;
+            uint32_t* csr_eptr;
+            std::tie(csr_edges,csr_eptr) = get_csr_graph_from_edges(edges,ebids,eptr,vptr,V_total,E_total);
+            
+            // -- check csr_edges --
+            uint32_t* _edges_chk;
+            int* _eptr_chk;
+            std::tie(_edges_chk,_eptr_chk) = get_edges_from_csr(csr_edges,csr_eptr,vptr,bids,V_total,nbatch_b);
+
+            // -- get graph colors --
+            uint8_t* gcolors = nullptr;//get_graph_coloring(csr_edges, csr_eptr, V_total);
 
             // -- update sp_size to control # of spix --
             // if (controlled_nspix){
@@ -206,7 +229,8 @@ int main(int argc, char **argv) {
             start = clock();
 
             // -- run segmentation --
-            auto spix_out = run_bass3d(ftrs, pos, edges, bids, ptr, eptr, dim_sizes, batchsize,
+            auto spix_out = run_bass3d(ftrs, pos, gcolors, csr_edges, bids, vptr, csr_eptr,
+                                        dim_sizes, batchsize,
                                         niters, niters_seg, sm_start, sp_size,
                                         sigma2_app, sigma2_size, potts, alpha,
                                         split_alpha, target_nspix, logger);
@@ -313,21 +337,33 @@ int main(int argc, char **argv) {
 
 
             // -- write and free --
-            bool succ = write_scene(scene_files_b,output_root,ftrs,pos,edges,ptr,eptr,spix);
+            // bool succ = write_scene(scene_files_b,output_root,ftrs,pos,edges,vptr,eptr,spix);
+            bool succ = write_scene(scene_files_b,output_root,ftrs,pos,_edges_chk,vptr,_eptr_chk,spix);
 
             cudaDeviceSynchronize();
 
             // -- free spix info --
             cudaFree(spix);
 
+            // -- free graph coloring --
+            cudaFree(gcolors);
+            cudaFree(csr_edges);
+            cudaFree(csr_eptr);
+
+            // -- free dev --
+            cudaFree(_edges_chk);
+            cudaFree(_eptr_chk);
+
             // -- free data --
             cudaFree(ftrs);
             cudaFree(pos);
             cudaFree(edges);
             cudaFree(bids);
-            cudaFree(ptr);
+            cudaFree(ebids);
+            cudaFree(vptr);
             cudaFree(eptr);
             cudaFree(dim_sizes);
+
         }
         cudaDeviceReset();
 
