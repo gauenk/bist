@@ -18,11 +18,12 @@ def get_edges_from_faces(face_data):
     gt_edges = np.unique(gt_edges,axis=0)
 
     vertex_counts = np.bincount(gt_edges.flatten())
-    print(vertex_counts)
+    #print(vertex_counts)
     print(np.min(vertex_counts),np.max(vertex_counts))
-    print(np.mean(1.0*(vertex_counts==2)))
-    print(np.sum(1.0*(vertex_counts==2)))
 
+    # k_thresh = 2
+    # print(np.mean(1.0*(vertex_counts<=2)))
+    # print(np.sum(1.0*(vertex_counts<=2)))
 
     return gt_edges
 
@@ -35,7 +36,7 @@ def main():
         plydata = PlyData.read(gt_fn)
         data = np.stack(np.array(plydata['face'].data)['vertex_indices'],axis=0)
         gt_edges = get_edges_from_faces(data)
-        print(gt_edges.shape)
+        #print(gt_edges.shape)
 
         fn = "output/scannetv2/%s/%s_vh_clean_2.ply" % (scene_name,scene_name)
         plydata = PlyData.read(fn)
@@ -45,6 +46,20 @@ def main():
         x = data['x']
         nnodes = len(x)
         print(edges.shape[0] - nnodes)
+
+        vertex_counts = np.bincount(edges.flatten())
+        #print(np.min(vertex_counts),np.max(vertex_counts))
+
+        # v_min = np.min(np.where(vertex_counts == 4)[0])
+        # print(v_min)
+        # print(edges)
+        # m_inds = np.where(np.any(edges == v_min,axis=1))[0]
+        # print(m_inds)
+        # print(edges[m_inds])
+        # print(np.min(vertex_counts),np.max(vertex_counts))
+        # print("quants: ",np.quantile(vertex_counts,[0.001,0.01,0.1,0.25,0.5,0.75,0.9,0.95]))
+
+
         labels = data['label']
         max_label = labels.max()
         uniq,cnts = np.unique(labels,return_counts=True)
