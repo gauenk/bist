@@ -183,6 +183,7 @@ int main(int argc, char **argv) {
             cudaMemcpy(&V_total,&vptr[nbatch_b],sizeof(int),cudaMemcpyDeviceToHost);
             int E_total;
             cudaMemcpy(&E_total,&eptr[nbatch_b],sizeof(int),cudaMemcpyDeviceToHost);
+            printf("V_total E_total : %d %d\n",V_total,E_total);
 
             // -- convert to csr --
             uint32_t* csr_edges;
@@ -195,7 +196,10 @@ int main(int argc, char **argv) {
             std::tie(_edges_chk,_eptr_chk) = get_edges_from_csr(csr_edges,csr_eptr,vptr,bids,V_total,nbatch_b);
 
             // -- get graph colors --
-            uint8_t* gcolors = nullptr;//get_graph_coloring(csr_edges, csr_eptr, V_total);
+            uint8_t* gcolors;
+            uint8_t gchrome;
+            std::tie(gcolors,gchrome) = get_graph_coloring(csr_edges, csr_eptr, V_total);
+            printf("graph chromaticity: %d\n",gchrome);
 
             // -- update sp_size to control # of spix --
             // if (controlled_nspix){
@@ -338,8 +342,8 @@ int main(int argc, char **argv) {
 
             // -- write and free --
             // bool succ = write_scene(scene_files_b,output_root,ftrs,pos,edges,vptr,eptr,spix);
-            bool succ = write_scene(scene_files_b,output_root,ftrs,pos,_edges_chk,vptr,_eptr_chk,spix);
-
+            bool succ = write_scene(scene_files_b,output_root,ftrs,pos,_edges_chk,vptr,_eptr_chk,gcolors,spix);
+            // bool succ = write_scene(scene_files_b,output_root,ftrs,pos,edges,vptr,eptr,gcolors,spix);
             cudaDeviceSynchronize();
 
             // -- free spix info --

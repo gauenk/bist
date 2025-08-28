@@ -151,7 +151,8 @@ get_csr_graph_from_edges(uint32_t* edges, uint8_t* ebids, int* eptr, int* vptr, 
 
 // CUDA kernel to write pairs only if vertex < neigh.
 __global__ void write_too_big(uint32_t* edges2big, int* bcount, bool* flag,
-                              const uint32_t* csr_edges, const uint32_t* csr_eptr, const uint8_t* vbids, int V) {
+                            const uint32_t* csr_edges, const uint32_t* csr_eptr, 
+                            int* vptr, const uint8_t* vbids, int V) {
 
     // -- get iterator --
     int vertex = blockIdx.x * blockDim.x + threadIdx.x;
@@ -159,6 +160,7 @@ __global__ void write_too_big(uint32_t* edges2big, int* bcount, bool* flag,
     int bx = vbids[vertex];
     int start = csr_eptr[vertex];
     int end = csr_eptr[vertex+1];
+    int vertex_batch_offset = vptr[bx];
     //int nedges = (end - start)/2;
 
     // -- ... --
@@ -169,8 +171,8 @@ __global__ void write_too_big(uint32_t* edges2big, int* bcount, bool* flag,
         //     printf("SELF! %d, %d\n",vertex,neigh);
         // }
         if (vertex >= neigh){ continue; }
-        edges2big[2*index] = vertex; // - vertex_batch_offset; // one day...
-        edges2big[2*index+1] = neigh; // - vertex_batch_offset; // one day...
+        edges2big[2*index] = vertex - vertex_batch_offset; // one day...
+        edges2big[2*index+1] = neigh - vertex_batch_offset; // one day...
         flag[2*index] = true;
         flag[2*index+1] = true;
         nedges += 1;
@@ -199,7 +201,7 @@ get_edges_from_csr(uint32_t* csr_edges, uint32_t* csr_eptr, int* vptr, uint8_t* 
     // -- Write only (min(e0,e1),max(e0,e1)) pairs; Lots of "empty" space.  --
     int block_size = 256;
     int grid_size = (V + block_size - 1) / block_size;
-    write_too_big<<<grid_size, block_size>>>(edges2big, bcount, flags, csr_edges, csr_eptr, vbids, V);
+    write_too_big<<<grid_size, block_size>>>(edges2big, bcount, flags, csr_edges, csr_eptr, vptr, vbids, V);
     
     // -- accumulate across eptr --
     cudaMemset(eptr, 0, sizeof(int)); // first byte is zero
@@ -208,7 +210,7 @@ get_edges_from_csr(uint32_t* csr_edges, uint32_t* csr_eptr, int* vptr, uint8_t* 
     // -- check --
     int _nedges;
     cudaMemcpy(&_nedges,&eptr[B],sizeof(int),cudaMemcpyDeviceToHost);
-    printf("nedges vs _nedges: %d,%d\n",E,_nedges);
+    //printf("nedges vs _nedges: %d,%d\n",E,_nedges);
 
     // -- Use CUB to compactify the result. --
     void* d_temp = nullptr;
@@ -230,6 +232,11 @@ get_edges_from_csr(uint32_t* csr_edges, uint32_t* csr_eptr, int* vptr, uint8_t* 
         d_num_selected,
         2*num_csr_edges
     );
+
+    // -- ... --
+    // uint32_t _tmp;
+    // cudaMemcpy(&_tmp,d_num_selected,sizeof(uint32_t),cudaMemcpyDeviceToHost);
+    // printf("[edges from csr]: %d %d\n",_tmp,2*E);
 
     // -- keep only the filled portion --
     uint32_t* edges = (uint32_t*)easy_allocate(2*E,sizeof(uint32_t));

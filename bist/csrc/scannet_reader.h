@@ -24,7 +24,7 @@ struct ScanNetScene {
     bool write_ply(const std::filesystem::path& scene_path,
                    const std::filesystem::path& output_root,
                    float* ftrs, float* pos, uint32_t* edges, 
-                   int nnodes, int nedges, uint32_t* labels=nullptr);
+                   int nnodes, int nedges, uint8_t* gcolor, uint32_t* labels=nullptr);
 };
 
 // Utility functions
@@ -35,5 +35,5 @@ int get_vertex_count(const std::filesystem::path& scene_name);
 std::tuple<float3*,float3*,uint32_t*,uint8_t*,uint8_t*,int*,int*,float*>
 read_scene(const std::vector<std::filesystem::path>& scene_files);
 bool write_scene(const std::vector<std::filesystem::path>& scene_files, const std::filesystem::path& output_root, 
-                float3* ftrs, float3* pos, uint32_t* edges, int* ptr, int* eptr, uint32_t* labels=nullptr);
+                float3* ftrs, float3* pos, uint32_t* edges, int* ptr, int* eptr, uint8_t* gcolor, uint32_t* labels=nullptr);
 

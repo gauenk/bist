@@ -143,7 +143,8 @@ read_scene(const std::vector<std::filesystem::path>& scene_files){
 // -- write each scene; [nnodes == spix if point-cloud is the superpixel point cloud] --
 bool write_scene(const std::vector<std::filesystem::path>& scene_files, 
                 const std::filesystem::path& output_root, 
-                float3* ftrs_cu, float3* pos_cu, uint32_t* edges_cu, int* ptr_cu, int* eptr_cu, uint32_t* labels_cu){
+                float3* ftrs_cu, float3* pos_cu, uint32_t* edges_cu, int* ptr_cu, int* eptr_cu, 
+                uint8_t* gcolor_cu, uint32_t* labels_cu){
 
     // -- sync before io --
     cudaDeviceSynchronize();
@@ -164,6 +165,7 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
     //float* dim_sizes = (float*)malloc(6*nbatch,sizeof(float));
     int* ptr = (int*)malloc((nbatch+1)*sizeof(int));
     int* eptr = (int*)malloc((nbatch+1)*sizeof(int));
+    uint8_t* gcolor = (uint8_t*)malloc(nnodes*sizeof(uint8_t));
     uint32_t* labels = nullptr;
     if (labels_cu != nullptr){
         labels = (uint32_t*)malloc(nnodes*sizeof(uint32_t));
@@ -176,6 +178,7 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
     //cudaMemcpy(dim_sizes,dim_sizes_cu,2*nbatch*sizeof(float3),cudaMemcpyDeviceToHost);
     cudaMemcpy(ptr,ptr_cu,(nbatch+1)*sizeof(int),cudaMemcpyDeviceToHost);
     cudaMemcpy(eptr,eptr_cu,(nbatch+1)*sizeof(int),cudaMemcpyDeviceToHost);
+    cudaMemcpy(gcolor,gcolor_cu,nnodes*sizeof(uint8_t),cudaMemcpyDeviceToHost);
     if (labels_cu != nullptr){
         cudaMemcpy(labels,labels_cu,nnodes*sizeof(uint32_t),cudaMemcpyDeviceToHost);
     }
@@ -191,6 +194,7 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
         float* ftrs_b = &ftrs[3*ptr[ix]];
         float* pos_b = &pos[3*ptr[ix]];
         uint32_t* edges_b = &edges[2*eptr[ix]];
+        uint8_t*  gcolor_b = &gcolor[ptr[ix]];
         uint32_t* labels_b = (labels != nullptr) ? &labels[ptr[ix]] : nullptr;
         int nnodes = ptr[ix+1] - ptr[ix];
         int nedges = eptr[ix+1] - eptr[ix];
@@ -201,7 +205,7 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
 
         // -- .. --
         ScanNetScene scene;
-        if(!scene.write_ply(scene_file,output_root,ftrs_b,pos_b,edges_b,nnodes,nedges,labels_b)){
+        if(!scene.write_ply(scene_file,output_root,ftrs_b,pos_b,edges_b,nnodes,nedges,gcolor_b,labels_b)){
             exit(1);
         }
 
@@ -439,7 +443,7 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
 bool ScanNetScene::write_ply(const std::filesystem::path& scene_path, 
                             const std::filesystem::path& output_root,
                             float* ftrs, float* pos, uint32_t* edges, 
-                            int nnodes, int nedges, uint32_t* labels) {
+                            int nnodes, int nedges, uint8_t* gcolors, uint32_t* labels) {
 
     // -- helper --
     std::string line;
@@ -479,6 +483,7 @@ bool ScanNetScene::write_ply(const std::filesystem::path& scene_path,
     header += "property uchar green\n";
     header += "property uchar blue\n";
     header += "property uchar alpha\n";
+    header += "property uchar gcolor\n";
     if (labels != nullptr) {
         header += "property uint label\n";
     }
@@ -495,6 +500,7 @@ bool ScanNetScene::write_ply(const std::filesystem::path& scene_path,
         float x, y, z;
         unsigned char r, g, b, alpha;
         uint32_t label;
+        uint8_t gcolor_id;
 
         // -- unpack --
         x = pos[3*i+0];
@@ -503,6 +509,7 @@ bool ScanNetScene::write_ply(const std::filesystem::path& scene_path,
         r = static_cast<unsigned char>(ftrs[3*i+0] * 255.0f);
         g = static_cast<unsigned char>(ftrs[3*i+1] * 255.0f);
         b = static_cast<unsigned char>(ftrs[3*i+2] * 255.0f);
+        gcolor_id = gcolors[i];
         alpha = 255;
         label = (labels != nullptr) ? static_cast<uint32_t>(labels[i]) : 0;
         //printf("label: %ld\n",label);
@@ -517,6 +524,7 @@ bool ScanNetScene::write_ply(const std::filesystem::path& scene_path,
         file.write(reinterpret_cast<const char*>(&g), sizeof(unsigned char));
         file.write(reinterpret_cast<const char*>(&b), sizeof(unsigned char));
         file.write(reinterpret_cast<const char*>(&alpha), sizeof(unsigned char));
+        file.write(reinterpret_cast<const char*>(&gcolor_id), sizeof(unsigned char));
         // -- write label if provided --
         if (labels != nullptr) {
             file.write(reinterpret_cast<const char*>(&label), sizeof(uint32_t));
