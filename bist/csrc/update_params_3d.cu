@@ -128,6 +128,51 @@ void sum_by_label(const float3* ftrs, const float3* pos,
 	
 }
 
+
+
+__device__ bool 
+compute_and_invert_covariance_3d(double3 mu_pos, double3 sq_sum_self_pos, double3 sq_sum_pairs_pos,
+                                 double prior_diag, double total_count, int count, double3& ivar, double3& icov, double& det) {
+    
+    // Check
+    det = 0.001;
+    if (total_count <= 3) return false;
+
+    // Compute covariance matrix elements (local registers)
+    float sxx = (prior_diag + sq_sum_self_pos.x - count*mu_pos.x*mu_pos.x) / (total_count - 3.0);  // Cov(x,x) sxx
+    float sxy = (sq_sum_pairs_pos.x - count*mu_pos.x*mu_pos.y) / (total_count - 3.0);  // Cov(x,y) sxy
+    float sxz = (sq_sum_pairs_pos.y - count*mu_pos.x*mu_pos.z) / (total_count - 3.0);;  // Cov(x,z) sxz
+    float syy = (prior_diag + sq_sum_self_pos.y - count*mu_pos.y*mu_pos.y) / (total_count - 3.0);;  // Cov(y,y) syy
+    float syz = (sq_sum_pairs_pos.z - count*mu_pos.y*mu_pos.z) / (total_count - 3.0);;  // Cov(y,z) syz
+    float szz = (prior_diag + sq_sum_self_pos.z - count*mu_pos.z*mu_pos.z) / (total_count - 3.0);;  // Cov(z,z) szz
+        
+    // In your covariance function, before computing determinant:
+    // printf("Raw variances: sxx=%.12f, syy=%.12f, szz=%.12f\n", sxx, syy, szz);
+    // printf("Covariances: sxy=%.12f, sxz=%.12f, syz=%.12f\n", sxy, sxz, syz);
+
+    // Compute determinant for inverse
+    det = sxx * (syy * szz - syz * syz) 
+        - sxy * (sxy * szz - sxz * syz) 
+        + sxz * (sxy * syz - sxz * syy);
+
+    // Check for singularity
+    if (det < 1e-8f) {
+        det = 0.01;
+        return false;  // Matrix is singular
+    }
+    
+    float inv_det = 1.0f / det;
+    
+    // Compute inverse matrix elements (adjugate / determinant)
+    ivar.x = (syy * szz - syz * syz) * inv_det;  // [0,0]
+    ivar.y = (sxx * szz - sxz * sxz) * inv_det;  // [1,1]  
+    ivar.z = (sxx * syy - sxy * sxy) * inv_det;  // [2,2]
+    icov.x = (sxz * syz - sxy * szz) * inv_det;  // [0,1]
+    icov.y = (sxy * syz - sxz * syy) * inv_det;  // [0,2]
+    icov.z = (sxy * sxz - sxx * syz) * inv_det;  // [1,2]
+    return true;  // Success
+}
+
 __global__
 void update_params_kernel(spix_params* sp_params, spix_helper* sp_helper,
                           float sigma_app, const int sp_size, const int nsuperpixel_buffer) {
@@ -136,7 +181,48 @@ void update_params_kernel(spix_params* sp_params, spix_helper* sp_helper,
 	int k = threadIdx.x + blockIdx.x * blockDim.x; // the label
 	if (k>=nsuperpixel_buffer) return;
 	if (sp_params[k].valid == 0) return;
-    
+
+    // -- unpack --
+    spix_params p = sp_params[k];
+    spix_helper h = sp_helper[k];
+    assert(p.count>0);
+    int pc = sp_size * sp_size;
+    double prior_diag = pc*pc;
+    double total_count = (double) p.count + pc*50;
+
+    // -- compute means --
+    float inv_n = 1./p.count;
+    double3 sum_app = h.sum_app;
+    float3 mu_app;
+    mu_app.x = sum_app.x*inv_n;
+    mu_app.y = sum_app.y*inv_n;
+    mu_app.z = sum_app.z*inv_n;
+
+    double3 sum_pos = h.sum_pos;
+    double3 mu_pos;
+    mu_pos.x = sum_pos.x*inv_n;
+    mu_pos.y = sum_pos.y*inv_n;
+    mu_pos.z = sum_pos.z*inv_n;
+
+    // -- compute inverse cov --
+    double3 ivar;
+    double3 icov;
+    double det;
+    bool succ = compute_and_invert_covariance_3d(mu_pos,h.sq_sum_self_pos,h.sq_sum_pairs_pos,
+                                                 prior_diag,total_count,p.count,ivar,icov,det);
+    if (!succ) {
+        icov.x = icov.y = icov.z = 0.0f;
+        ivar.x = ivar.y = ivar.z = 1e2f;  // Large identity for inverse
+    }
+
+    // -- write all at once --
+    sp_params[k].mu_app = mu_app;
+    sp_params[k].mu_pos = mu_pos;
+    sp_params[k].var_pos = ivar;
+    sp_params[k].cov_pos = icov;
+    sp_params[k].logdet_sigma_shape = log(det);
+}
+
 //   // -- read curr --
 // 	int count_int = sp_params[k].count;
 // 	float pc = sp_params[k].prior_count; 
@@ -287,7 +373,7 @@ void update_params_kernel(spix_params* sp_params, spix_helper* sp_helper,
 //     sp_params[k].sigma_shape.x = sigma_shape.z/det;
 //     sp_params[k].sigma_shape.y = -sigma_shape.y/det;
 //     sp_params[k].sigma_shape.z = sigma_shape.x/det;
-//     sp_params[k].logdet_sigma_shape = log(det);
+// //     sp_params[k].logdet_sigma_shape = log(det);
 
-}
+// }
 

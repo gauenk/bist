@@ -69,6 +69,10 @@ def main():
         pos = np.c_[data['x'],data['y'],data['z']]
         var = np.c_[data['var_x'],data['var_y'],data['var_z']]
         cov = np.c_[data['cov_xy'],data['cov_xz'],data['cov_yz']]
+        print(ftr)
+        print(pos)
+        print(var)
+        print(cov)
         print(ftr.shape,pos.shape,var.shape,cov.shape)
         print(data.dtype.names)
         exit()
