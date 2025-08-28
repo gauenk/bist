@@ -31,6 +31,8 @@ struct ScanNetScene {
 // int get_vertex_count(const std::string& ply_file);
 int get_vertex_count(const std::filesystem::path& scene_name);
 
+std::vector<std::filesystem::path> get_scene_files(std::filesystem::path root);
+
 // Main function - returns (ftrs_cu, pos_cu, dim_sizes_cu, nnodes_cu, total_nodes, batchsize)
 std::tuple<float3*,float3*,uint32_t*,uint8_t*,uint8_t*,int*,int*,float*>
 read_scene(const std::vector<std::filesystem::path>& scene_files);

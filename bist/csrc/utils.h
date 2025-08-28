@@ -30,8 +30,8 @@ bool parse_argument(int &i, int argc, char **argv, const std::string &arg,
 
 
 // -- standard functions --
-void show_usage(const std::string &program_name);
-superpixel_options get_sp_options(int sp_size,float i_std,
-                                         float beta, float alpha_hasting);
+// void show_usage(const std::string &program_name);
+// superpixel_options get_sp_options(int sp_size,float i_std,
+//                                          float beta, float alpha_hasting);
 
 

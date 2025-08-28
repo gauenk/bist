@@ -86,8 +86,7 @@ struct diff_op {
     }
 };
 
-
-uint32_t* run_compactify(uint32_t* spix, uint8_t* bids, uint32_t* nspix_old, uint32_t* max_new_nspix, int nbatch, int nnodes) {
+void run_compactify(uint32_t* nspix, uint32_t* spix, uint8_t* bids, uint32_t* nspix_old, uint32_t* max_new_nspix, int nbatch, int nnodes) {
 
     // get the cummulative sum of the differences
     uint32_t* max_new_csum = (uint32_t*)easy_allocate((nbatch+1),sizeof(uint32_t));
@@ -120,7 +119,7 @@ uint32_t* run_compactify(uint32_t* spix, uint8_t* bids, uint32_t* nspix_old, uin
     // yeah pretty minor after init...
     // but the init case is just sooo bad... well for now we spike it i guess.
     //uint32_t* label_map = easy_allocate(max_num_new,sizeof(uint32_t));
-    uint32_t* nspix = (uint32_t*)easy_allocate(nbatch,sizeof(uint32_t));
+    // uint32_t* nspix = (uint32_t*)easy_allocate(nbatch,sizeof(uint32_t));
     cudaMemcpy(nspix,nspix_old,nbatch*sizeof(uint32_t),cudaMemcpyDeviceToDevice);
     uint32_t* label2index_shell = (uint32_t*)easy_allocate(max_num_new,sizeof(uint32_t));
     cudaMemset(label2index_shell, 0xFF, max_num_new * sizeof(uint32_t));
@@ -158,7 +157,7 @@ uint32_t* run_compactify(uint32_t* spix, uint8_t* bids, uint32_t* nspix_old, uin
     cudaFree(label2index_shell);
     cudaFree(max_new_csum);
 
-    return nspix;
+    return;
 }
 
 

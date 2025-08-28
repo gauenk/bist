@@ -473,7 +473,7 @@ get_graph_coloring(
 
     // -- allocate --
     uint8_t* colors = (uint8_t*)easy_allocate(V,sizeof(uint8_t));
-    cudaMemset(colors,0x01,V*sizeof(uint8_t));
+    //cudaMemset(colors,0x01,V*sizeof(uint8_t));
     const int block_size = 512;
     const int grid_size = (V/V_PER_THREAD + block_size - 1) / block_size;
     
@@ -521,19 +521,19 @@ get_graph_coloring(
     // //printf("[chroma] old,new (%d,%d)\n",current_color,new_chromaticity);
 
     // -- check --
-    const int _block_size = 512;
-    const int _grid_size = (V + block_size - 1) / block_size;
-    bool* is_valid = (bool*)easy_allocate(V,sizeof(bool));
-    validate_coloring<<<_grid_size, _block_size>>>(edges,eptr,colors,is_valid,V);
-    thrust::device_vector<bool> valid_vec(is_valid, is_valid + V);
-    int valid_count = thrust::count(valid_vec.begin(), valid_vec.end(), true);
-    bool all_valid = (valid_count == V);
-    if (all_valid) {
-        printf("✓ Graph coloring is valid!\n");
-    } else {
-        printf("✗ Found %d vertices with invalid coloring\n", V - valid_count);
-    }
-    cudaFree(is_valid);
+    // const int _block_size = 512;
+    // const int _grid_size = (V + block_size - 1) / block_size;
+    // bool* is_valid = (bool*)easy_allocate(V,sizeof(bool));
+    // validate_coloring<<<_grid_size, _block_size>>>(edges,eptr,colors,is_valid,V);
+    // thrust::device_vector<bool> valid_vec(is_valid, is_valid + V);
+    // int valid_count = thrust::count(valid_vec.begin(), valid_vec.end(), true);
+    // bool all_valid = (valid_count == V);
+    // if (all_valid) {
+    //     printf("✓ Graph coloring is valid!\n");
+    // } else {
+    //     printf("✗ Found %d vertices with invalid coloring\n", V - valid_count);
+    // }
+    // cudaFree(is_valid);
 
 
     return std::tuple(colors,current_color);

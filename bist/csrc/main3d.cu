@@ -17,15 +17,16 @@
 #include <opencv2/opencv.hpp>
 
 // -- local --
-#include "file_io.h"
-#include "structs.h"
+// #include "file_io.h"
+// #include "structs.h"
 #include "init_utils.h"
 // #include "rgb2lab.h"
 #include "bass3d.h"
-#include "seg_utils.h"
-#include "split_disconnected.h"
-#include "main_utils.h"
-#include "utils.h"
+// #include "seg_utils.h"
+// #include "split_disconnected.h"
+// #include "main_utils.h"
+//#include "utils.h"
+#include "structs_3d.h"
 
 //#include "pointcloud_reader.h"
 #include "scannet_reader.h"
@@ -34,6 +35,28 @@
 
 using namespace std;
 
+
+// -- parser --
+template <typename T>
+bool parse_argument(int &i, int argc, char **argv, const std::string &arg,
+                    const std::string &option, T &value) {
+    if (arg == option) {
+        if (i + 1 < argc) {
+            ++i;
+            if constexpr (std::is_same<T, int>::value) {
+                value = std::stoi(argv[i]);
+            } else if constexpr (std::is_same<T, float>::value) {
+                value = std::stof(argv[i]);
+            } else if constexpr (std::is_same<T, const char *>::value || std::is_same<T, std::string>::value) {
+                value = argv[i];
+            }
+        } else {
+            std::cerr << option << " option requires an argument." << std::endl;
+            return false;
+        }
+    }
+    return true;
+}
 
 
 int main(int argc, char **argv) {
@@ -75,7 +98,8 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-h" || arg == "--help") {
-            show_usage(argv[0]);
+            //show_usage(argv[0]);
+            printf("halp.\n");
             return 0;
         }
 
@@ -143,6 +167,10 @@ int main(int argc, char **argv) {
     printf("num files: %d\n",scene_files.size());
     // printf("use_sm: %d\n",use_sm==true);  
 
+    // -- create argument struct --
+    SpixMetaData args{niters, niters_seg, sm_start, sp_size,
+                     sigma2_app, sigma2_size, potts, alpha, split_alpha, target_nspix};
+
     // -- allow for batching --
     int nbatches = nscenes / batchsize;
 
@@ -150,8 +178,6 @@ int main(int argc, char **argv) {
     float niters_ave = 0;
     int count = 0;
     double timer=0;
-    int* spix_prev = nullptr;
-    SuperpixelParams* params_prev = nullptr;
     for (int _ix = 0; _ix < nbatches; _ix++){
 
 
@@ -190,10 +216,10 @@ int main(int argc, char **argv) {
             uint32_t* csr_eptr;
             std::tie(csr_edges,csr_eptr) = get_csr_graph_from_edges(edges,ebids,eptr,vptr,V_total,E_total);
             
-            // -- check csr_edges --
-            uint32_t* _edges_chk;
-            int* _eptr_chk;
-            std::tie(_edges_chk,_eptr_chk) = get_edges_from_csr(csr_edges,csr_eptr,vptr,bids,V_total,nbatch_b);
+            // // -- check csr_edges --
+            // uint32_t* _edges_chk;
+            // int* _eptr_chk;
+            // std::tie(_edges_chk,_eptr_chk) = get_edges_from_csr(csr_edges,csr_eptr,vptr,bids,V_total,nbatch_b);
 
             // -- get graph colors --
             uint8_t* gcolors;
@@ -215,10 +241,10 @@ int main(int argc, char **argv) {
             **********************************************/
 
             // -- single image --
-            uint32_t* spix = nullptr;
-            bool* border = nullptr;
-            int nspix = -1;
-            SuperpixelParams* params = nullptr;
+            // uint32_t* spix = nullptr;
+            // bool* border = nullptr;
+            // int nspix = -1;
+            // SuperpixelParams* params = nullptr;
 
             cv::String log_root = string(output_root)+"log/";
             Logger* logger = nullptr;
@@ -233,14 +259,10 @@ int main(int argc, char **argv) {
             start = clock();
 
             // -- run segmentation --
-            auto spix_out = run_bass3d(ftrs, pos, gcolors, csr_edges, bids, vptr, csr_eptr,
-                                        dim_sizes, batchsize,
-                                        niters, niters_seg, sm_start, sp_size,
-                                        sigma2_app, sigma2_size, potts, alpha,
-                                        split_alpha, target_nspix, logger);
-            spix = std::get<0>(spix_out);
-            border = std::get<1>(spix_out);
-            params = std::get<2>(spix_out);
+            PointCloudData data{ftrs, pos, gcolors, csr_edges, bids, 
+                                vptr, csr_eptr, dim_sizes, gchrome, 
+                                scene_files_b.size(), V_total, E_total};
+            SuperpixelParams3d params = run_bass3d(data, args, logger);
 
             // -- benchmarking/tracking --
             niters_ave += niters;
@@ -342,12 +364,9 @@ int main(int argc, char **argv) {
 
             // -- write and free --
             // bool succ = write_scene(scene_files_b,output_root,ftrs,pos,edges,vptr,eptr,spix);
-            bool succ = write_scene(scene_files_b,output_root,ftrs,pos,_edges_chk,vptr,_eptr_chk,gcolors,spix);
-            // bool succ = write_scene(scene_files_b,output_root,ftrs,pos,edges,vptr,eptr,gcolors,spix);
+            // bool succ = write_scene(scene_files_b,output_root,ftrs,pos,_edges_chk,vptr,_eptr_chk,gcolors,spix);
+            bool succ = write_scene(scene_files_b,output_root,ftrs,pos,edges,vptr,eptr,gcolors,params.spix_ptr());
             cudaDeviceSynchronize();
-
-            // -- free spix info --
-            cudaFree(spix);
 
             // -- free graph coloring --
             cudaFree(gcolors);
@@ -355,8 +374,8 @@ int main(int argc, char **argv) {
             cudaFree(csr_eptr);
 
             // -- free dev --
-            cudaFree(_edges_chk);
-            cudaFree(_eptr_chk);
+            // cudaFree(_edges_chk);
+            // cudaFree(_eptr_chk);
 
             // -- free data --
             cudaFree(ftrs);

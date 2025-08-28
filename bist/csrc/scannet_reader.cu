@@ -1,15 +1,9 @@
-#pragma once
-
 #include <string>
 #include <fstream>
 #include <iostream>
 #include <filesystem>
 #include <algorithm>
 #include <cfloat>
-
-#include "extract_edges.h"
-#include "init_utils.h"
-
 
 #include <vector>
 #include <thrust/device_ptr.h>
@@ -19,7 +13,21 @@
 #include "cuda.h"
 #include "cuda_runtime.h"
 
+
+#include "extract_edges.h"
+#include "init_utils.h"
 #include "scannet_reader.h"
+
+
+std::vector<std::filesystem::path> get_scene_files(std::filesystem::path root) {
+   std::vector<std::filesystem::path> scene_files;
+   for (const auto& entry : std::filesystem::directory_iterator(root)) {
+       if (entry.is_directory()) {
+           scene_files.push_back(entry.path());
+       }
+   }
+   return scene_files;
+}
 
 // -- read each scene --
 std::tuple<float3*,float3*,uint32_t*,uint8_t*,uint8_t*,int*,int*,float*>

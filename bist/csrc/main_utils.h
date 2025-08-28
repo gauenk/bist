@@ -46,6 +46,3 @@ void normz_and_format_k(float* delta, uint8_t* delta_fmt, int npix, float* dmax)
 
 std::tuple<int*,int,bool*>
 get_square_segmentation(int sp_size, int nbatch, int height, int width);
-
-
-std::vector<std::filesystem::path> get_scene_files(std::filesystem::path root);

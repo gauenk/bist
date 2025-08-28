@@ -15,25 +15,25 @@ using namespace std;
 
 
 // Set Configuration
-superpixel_options get_sp_options(int nPixels_in_square_side,
-                                         float i_std,float beta, float alpha_hasting){
-    superpixel_options opt;
-    opt.nPixels_in_square_side = nPixels_in_square_side;
-    opt.i_std = i_std;
-    opt.beta_potts_term = beta;
-    opt.area = opt.nPixels_in_square_side*opt.nPixels_in_square_side;
-    opt.s_std = opt.nPixels_in_square_side;
-    opt.prior_count = opt.area*opt.area ;
-    opt.calc_cov = true;
-    opt.use_hex = false;
-    opt.alpha_hasting = alpha_hasting;
+// superpixel_options get_sp_options(int nPixels_in_square_side,
+//                                          float i_std,float beta, float alpha_hasting){
+//     superpixel_options opt;
+//     opt.nPixels_in_square_side = nPixels_in_square_side;
+//     opt.i_std = i_std;
+//     opt.beta_potts_term = beta;
+//     opt.area = opt.nPixels_in_square_side*opt.nPixels_in_square_side;
+//     opt.s_std = opt.nPixels_in_square_side;
+//     opt.prior_count = opt.area*opt.area ;
+//     opt.calc_cov = true;
+//     opt.use_hex = false;
+//     opt.alpha_hasting = alpha_hasting;
 
-    opt.nEMIters = opt.nPixels_in_square_side;
-    // opt.nEMIters = 10000;
-    //opt.nEMIters = 15;
-    opt.nInnerIters = 4;
-    return opt;
-}
+//     opt.nEMIters = opt.nPixels_in_square_side;
+//     // opt.nEMIters = 10000;
+//     //opt.nEMIters = 15;
+//     opt.nInnerIters = 4;
+//     return opt;
+// }
 
 
 // void save_params(String fname, superpixel_params* sparams, std::vector<int> spix_ids){
@@ -66,16 +66,16 @@ superpixel_options get_sp_options(int nPixels_in_square_side,
 // }
 
 
-void show_usage(const std::string &program_name) {
-    std::cout << "Usage: " << program_name << " [options]\n"
-              << "Options:\n"
-              << "  -h, --help                Show this help message\n"
-              << "  -d, --image_direc DIR     Set image directory (default: image/)\n"
-              << "  -n, --nPixels_on_side N   Set number of pixels on side (default: 15)\n"
-              << "  --i_std VALUE             Set i_std value (default: 0.018)\n"
-              << "  --im_size VALUE           Set image size (default: 0)\n"
-              << "  --beta VALUE              Set beta value (default: 0.5)\n"
-              << "  --alpha VALUE             Set alpha value (default: 0.5)\n"
-              << "  --subdir DIR              Set subdirectory (default: none)\n";
-}
+// void show_usage(const std::string &program_name) {
+//     std::cout << "Usage: " << program_name << " [options]\n"
+//               << "Options:\n"
+//               << "  -h, --help                Show this help message\n"
+//               << "  -d, --image_direc DIR     Set image directory (default: image/)\n"
+//               << "  -n, --nPixels_on_side N   Set number of pixels on side (default: 15)\n"
+//               << "  --i_std VALUE             Set i_std value (default: 0.018)\n"
+//               << "  --im_size VALUE           Set image size (default: 0)\n"
+//               << "  --beta VALUE              Set beta value (default: 0.5)\n"
+//               << "  --alpha VALUE             Set alpha value (default: 0.5)\n"
+//               << "  --subdir DIR              Set subdirectory (default: none)\n";
+// }
 

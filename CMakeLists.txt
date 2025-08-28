@@ -30,17 +30,17 @@ else()
 endif()
 
 set(SHARED_SOURCES
-  bist/csrc/scannet_reader.cu
-  bist/csrc/compact_spix_3d.cu
-  bist/csrc/extract_edges.cu
-  bist/csrc/csr_edges.cu
-  bist/csrc/graph_coloring.cu
-  bist/csrc/main_utils.cu
-  bist/csrc/file_io.cpp
-  bist/csrc/logger.cu
-  bist/csrc/bist.cu
   bist/csrc/init_utils.cu
   bist/csrc/init_seg.cu
+)
+
+set(SHARED_SOURCES_2D
+  bist/csrc/bass.cu
+  bist/csrc/bist.cu
+  bist/csrc/logger.cu
+  bist/csrc/main_utils.cu
+  bist/csrc/utils.cu
+  bist/csrc/file_io.cpp
   bist/csrc/init_sparams.cu
   bist/csrc/rgb2lab.cu
   bist/csrc/compact_spix.cu
@@ -59,6 +59,15 @@ set(SHARED_SOURCES
   bist/csrc/split_disconnected.cu
   bist/csrc/relabel.cu
   bist/csrc/lots_of_merge.cu
+)
+
+set(SHARED_SOURCES_3D
+  bist/csrc/bass3d.cu
+  bist/csrc/scannet_reader.cu
+  bist/csrc/compact_spix_3d.cu
+  bist/csrc/extract_edges.cu
+  bist/csrc/csr_edges.cu
+  bist/csrc/graph_coloring.cu
 )
 
 # ADD THESE LINES - Explicitly mark .cu files as CUDA
@@ -99,14 +108,14 @@ set_source_files_properties(
 )
 
 # 2D
-add_executable(bist bist/csrc/main.cu ${SHARED_SOURCES} bist/csrc/bass.cu)
+add_executable(bist bist/csrc/main.cu ${SHARED_SOURCES} ${SHARED_SOURCES_2D})
 target_link_libraries(bist ${OpenCV_LIBS} cuda cublas cudadevrt) # CUDA linking
 set_target_properties(bist PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin
 )
 
 # 3D
-add_executable(bist3d bist/csrc/main3d.cu ${SHARED_SOURCES} bist/csrc/bass3d.cu)
+add_executable(bist3d bist/csrc/main3d.cu ${SHARED_SOURCES} ${SHARED_SOURCES_3D})
 target_link_libraries(bist3d ${OpenCV_LIBS} cuda cublas cudadevrt) # CUDA linking
 set_target_properties(bist3d PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin

@@ -18,24 +18,25 @@
 #include <thrust/execution_policy.h>
 
 // -- "external" import --
-#include "structs.h"
+// #include "structs.h"
 
 // -- utils --
 // #include "rgb2lab.h"
 // #include "sparams_io.h"
-#include "seg_utils.h"
+// #include "seg_utils.h"
 #include "init_utils.h"
 #include "init_seg.h"
-#include "init_sparams.h"
+// #include "init_sparams.h"
 // #include "compact_spix.h"
 // #include "compact_spix_cub.h"
 #include "compact_spix_3d.h"
-#include "sparams_io.h"
+// #include "sparams_io.h"
+#include "structs_3d.h"
 
 // -- primary functions --
-#include "split_merge_orig.h"
-#include "update_params.h"
-#include "update_seg.h"
+// #include "split_merge_orig.h"
+// #include "update_params.h"
+// #include "update_seg.h"
 // #include "compact_spix.h" // only for controllable bass
 
 #define THREADS_PER_BLOCK 512
@@ -374,27 +375,22 @@
 
 ***********************************************************/
 
-
-
-std::tuple<uint32_t*,bool*,SuperpixelParams*>
-run_bass3d(float3* ftrs, float3* pos, uint8_t* gcolors, 
-           uint32_t* csr_edges, uint8_t* bids, 
-           int* ptr, uint32_t* csr_eptr, float* dim_sizes, int nbatch,
-           int niters, int niters_seg, int sm_start, int sp_size,
-           float sigma2_app, float sigma2_size, float potts,
-           float alpha_hastings, float split_alpha, int target_nspix, Logger* logger){
+SuperpixelParams3d
+run_bass3d(PointCloudData& data, SpixMetaData& args, Logger* logger){
 
     // -- allocate filled spix --
     //int npix = height*width; // nnodes; which is different for each element in the batch.
-    int nnodes;
-    cudaMemcpy(&nnodes,&ptr[nbatch],sizeof(int), cudaMemcpyDeviceToHost);
     // thrust::device_vector<uint64_t> spix(nnodes, -1);
     // uint64_t* spix_ptr = thrust::raw_pointer_cast(spix.data());
 
     // -- init spix --
-    uint32_t* spix = (uint32_t*)easy_allocate(nnodes,sizeof(uint32_t));
-    uint32_t* init_nspix = init_seg_3d(spix, pos, bids, ptr, dim_sizes, sp_size, nbatch, nnodes);
-    
+    SuperpixelParams3d params(data.V,data.B);
+
+    // -- init spix --
+    //uint32_t* spix = (uint32_t*)easy_allocate(data.V,sizeof(uint32_t));
+    uint32_t* init_nspix = init_seg_3d(params.spix_ptr(), data.pos, data.bids, data.ptr, data.dim_sizes, args.sp_size, data.B, data.V);
+    //bool* border = (bool*)easy_allocate(data.V,sizeof(bool));
+
     // // Cumulative sum & max over nspix
     // uint64_t* nspix_csum = (uint64_t*)easy_allocate((nbatch+1),sizeof(uint64_t));
     // uint64_t nspix_max;
@@ -407,20 +403,9 @@ run_bass3d(float3* ftrs, float3* pos, uint8_t* gcolors,
     //   cudaMemcpy(&nspix_max, &max_val, sizeof(uint64_t), cudaMemcpyHostToDevice);
     // }
 
-    // -- compactify spix --
-    uint32_t* prev_nspix = (uint32_t*)easy_allocate(nbatch,sizeof(uint32_t));
-    cudaMemset(prev_nspix,0,nbatch*sizeof(uint32_t));
-    uint32_t* nspix = run_compactify(spix, bids, prev_nspix, init_nspix, nbatch, nnodes);
+    // -- compactify spix [ sets nspix within params ] --
+    run_compactify(params.nspix_ptr(), params.spix_ptr(), data.bids, params.prev_nspix_ptr(), init_nspix, data.B, data.V);
 
-    bool* border = nullptr;
-    SuperpixelParams* params = nullptr;
-
-    // -- free memory --
-    cudaDeviceSynchronize();
-    cudaFree(nspix);
-    cudaFree(prev_nspix);
-    cudaFree(init_nspix);
-    
 //     // -- allocate memory --
 //     int nspix_buffer = nspix_init*10;
 //     const int sparam_size = sizeof(spix_params);
@@ -428,6 +413,12 @@ run_bass3d(float3* ftrs, float3* pos, uint8_t* gcolors,
 //     bool* border = (bool*)easy_allocate(nbatch*npix,sizeof(bool));
 //     spix_params* sp_params=(spix_params*)easy_allocate(nbatch*nspix_buffer,sparam_size);
 //     spix_helper* sp_helper=(spix_helper*)easy_allocate(nbatch*nspix_buffer,helper_size);
+
+
+    // -- free memory --
+    cudaDeviceSynchronize();
+    cudaFree(init_nspix);
+    
 
 //     // -- extract uniq ids --
 //     //thrust::device_vector<int> nspix(nbatch, nspix_init);
@@ -579,7 +570,8 @@ run_bass3d(float3* ftrs, float3* pos, uint8_t* gcolors,
     // -- return! --
     //return std::make_tuple(_spix,border,params);
     // return std::make_tuple(_spix,border);
-    return std::make_tuple(spix,border,params);
+    //return std::make_tuple(spix,border,params);
+    return params;
 }
 
 
