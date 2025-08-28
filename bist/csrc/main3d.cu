@@ -88,6 +88,7 @@ int main(int argc, char **argv) {
     int target_nspix = 0;
     int logging = 0;
     int save_only_spix = 0;
+    int nspix_buffer_mult = 1;
 
     /******************************
 
@@ -169,7 +170,7 @@ int main(int argc, char **argv) {
 
     // -- create argument struct --
     SpixMetaData args{niters, niters_seg, sm_start, sp_size,
-                     sigma2_app, sigma2_size, potts, alpha, split_alpha, target_nspix};
+                     sigma2_app, sigma2_size, potts, alpha, split_alpha, target_nspix, nspix_buffer_mult};
 
     // -- allow for batching --
     int nbatches = nscenes / batchsize;
@@ -366,6 +367,7 @@ int main(int argc, char **argv) {
             // bool succ = write_scene(scene_files_b,output_root,ftrs,pos,edges,vptr,eptr,spix);
             // bool succ = write_scene(scene_files_b,output_root,ftrs,pos,_edges_chk,vptr,_eptr_chk,gcolors,spix);
             bool succ = write_scene(scene_files_b,output_root,ftrs,pos,edges,vptr,eptr,gcolors,params.spix_ptr());
+            succ = write_spix(scene_files_b,output_root,params);
             cudaDeviceSynchronize();
 
             // -- free graph coloring --

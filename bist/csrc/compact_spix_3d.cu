@@ -107,7 +107,7 @@ void run_compactify(uint32_t* nspix, uint32_t* spix, uint8_t* bids, uint32_t* ns
     }
     uint32_t max_num_new;
     cudaMemcpy(&max_num_new,&max_new_csum[nbatch],sizeof(uint32_t),cudaMemcpyDeviceToHost);
-    printf("max_new_csum[nbatch]: %d\n",max_num_new);
+    //printf("max_new_csum[nbatch]: %d\n",max_num_new);
     
     // Step 2: Count unique hashes and create label map
     //ntotal_nspix = cusmum(nspix)[-1];

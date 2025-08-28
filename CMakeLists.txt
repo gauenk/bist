@@ -68,6 +68,9 @@ set(SHARED_SOURCES_3D
   bist/csrc/extract_edges.cu
   bist/csrc/csr_edges.cu
   bist/csrc/graph_coloring.cu
+  bist/csrc/sparams_io_3d.cu  
+  bist/csrc/update_params_3d.cu
+  bist/csrc/update_seg_3d.cu
 )
 
 # ADD THESE LINES - Explicitly mark .cu files as CUDA

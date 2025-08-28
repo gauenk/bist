@@ -228,7 +228,7 @@ __device__ float2 calc_joint(float* imgC, int* seg,
     // printf("res: %2.2f\n",res);
 
     // -- info only --
-    float3 mu_app = sp_params[seg_index].mu_app;
+    //float3 mu_app = sp_params[seg_index].mu_app;
     // printf("mu_app: [%2.2f,%2.2f,%2.2f],[%2.2f,%2.2f,%2.2f].[%2.2f]\n",
     //        mu_app.x,mu_app.y,mu_app.z,imgC[0],imgC[1],imgC[2],sigma2_app);
     // res = res - logdet_sigma_app;

@@ -42,6 +42,8 @@ def main():
 
         fn = "output/scannetv2/%s/%s_vh_clean_2.ply" % (scene_name,scene_name)
         plydata = PlyData.read(fn)
+        spix_fn = "output/scannetv2/%s/%s_spix.ply" % (scene_name,scene_name)
+        spix_plydata = PlyData.read(spix_fn)
         edges = np.array(plydata['edge'].data)
         edges = np.c_[edges['vertex1'],edges['vertex2']]
         data = np.array(plydata['vertex'].data)
@@ -49,6 +51,8 @@ def main():
         print(data.dtype.names)
 
         gcolor = data['gcolor']
+        spix = data['label']
+        print(spix.min(),spix.max())
         print(gcolor)
         #exit()
         nnodes = len(x)
@@ -56,8 +60,18 @@ def main():
         print(edges.shape)
         vertex_counts = np.bincount(edges.flatten())
         print(len(vertex_counts))
-        print("degree: ",np.min(vertex_counts),np.max(vertex_counts),np.argmin(vertex_counts))
+        print("degree: ",np.min(vertex_counts),np.max(vertex_counts))
 
+
+        # -- spix --
+        data = np.array(spix_plydata['vertex'].data)
+        ftr = np.c_[data['red'],data['green'],data['blue']]
+        pos = np.c_[data['x'],data['y'],data['z']]
+        var = np.c_[data['var_x'],data['var_y'],data['var_z']]
+        cov = np.c_[data['cov_xy'],data['cov_xz'],data['cov_yz']]
+        print(ftr.shape,pos.shape,var.shape,cov.shape)
+        print(data.dtype.names)
+        exit()
         # v_min = np.min(np.where(vertex_counts == 4)[0])
         # print(v_min)
         # print(edges)
