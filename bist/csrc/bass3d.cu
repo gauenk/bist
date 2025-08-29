@@ -53,21 +53,16 @@
 
 __host__ void bass(spix_params* aos_params, spix_helper* sm_helper, PointCloudData& data, SuperpixelParams3d& soa_params, SpixMetaData& args, Logger* logger){
 
-    // // -- init --
-    // for (int idx = 0; idx < args.niters; idx++) {
+    // -- init --
+    for (int idx = 0; idx < args.niters; idx++) {
 
-    //   // -- Update Parameters --
-    //   update_params(img, seg, sp_params, sp_helper, sigma2_app,
-    //                 npix, sp_size, nspix_buffer, nbatch, width, nftrs, prop_flag);
+      // -- Update Parameters --
+      update_params(aos_params,sm_helper,data,soa_params,args,logger);
 
-    //   // -- Update Segmentation --
-    //   update_seg(img, seg, border, sp_params,
-    //              niters_seg, sigma2_app, potts,
-    //              npix, nspix_buffer, nbatch, width, height, nftrs, logger);
+      // -- Update Segmentation --
+      update_seg(aos_params,sm_helper,data,soa_params,args,logger);
 
-    // }
-
-    update_params(aos_params,sm_helper,data,soa_params,args,logger);
+    }
 
 }
 

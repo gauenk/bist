@@ -6,12 +6,9 @@
 
 /***********************************************
 
-           Compute Posterior Mode
+          Compute Cluster Parameters
 
 ************************************************/
-
-
-
 
 __host__ void update_params(const float* img, const int* spix,
                             spix_params* sp_params,spix_helper* sp_helper,

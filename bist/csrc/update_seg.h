@@ -4,7 +4,7 @@
 #include "device_launch_parameters.h"
 #include "seg_utils.h"
 
-__host__ void set_border(int* seg, bool* border, int height, int width);
+// __host__ void set_border(int* seg, bool* border, int height, int width);
 
 __global__
 void update_seg_subset(float* img, int* seg, bool* border,

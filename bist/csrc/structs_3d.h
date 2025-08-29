@@ -52,6 +52,8 @@ struct SuperpixelParams3d{
   // -- spix and border --
   thrust::device_vector<uint32_t> spix;
   thrust::device_vector<bool> border;
+  thrust::device_vector<bool> is_simple_point;
+  thrust::device_vector<uint8_t> neigh_neq;
 
   // -- summary stats about nspix --
   thrust::device_vector<uint32_t> nspix;
@@ -86,6 +88,14 @@ struct SuperpixelParams3d{
   bool* border_ptr() {
       return thrust::raw_pointer_cast(border.data());
   }
+  bool* is_simple_point_ptr() {
+      return thrust::raw_pointer_cast(is_simple_point.data());
+  }
+  uint8_t* neigh_neq_ptr() {
+      return thrust::raw_pointer_cast(neigh_neq.data());
+  }
+  
+  
   void comp_csum_nspix(){
     uint32_t* nspix_ptr = thrust::raw_pointer_cast(nspix.data());
     uint32_t* csum_ptr = thrust::raw_pointer_cast(csum_nspix.data());
@@ -112,6 +122,8 @@ struct SuperpixelParams3d{
     // -- superpixel laeling --
     spix.resize(V);
     border.resize(V);
+    is_simple_point.resize(V);
+    neigh_neq.resize(V);
     nspix.resize(B,0);
     prev_nspix.resize(B,0);
     csum_nspix.resize(B+1,0);

@@ -74,6 +74,8 @@ def main():
         print(var)
         print(cov)
         print(ftr.shape,pos.shape,var.shape,cov.shape)
+        valid_ivar_perc = np.all(var < 100,axis=1).mean()
+        print(valid_ivar_perc)
         print(data.dtype.names)
         exit()
         # v_min = np.min(np.where(vertex_counts == 4)[0])

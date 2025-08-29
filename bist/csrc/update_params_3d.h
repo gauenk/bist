@@ -1,12 +1,8 @@
 
 #include <math.h>
-
 #include "cuda.h"
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
-
-
-
 #include "structs_3d.h"
 
 __host__ void update_params(spix_params* aos_params, spix_helper* sm_helper, PointCloudData& data, SuperpixelParams3d& soa_params, SpixMetaData& args, Logger* logger);
