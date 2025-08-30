@@ -23,6 +23,7 @@
 // -- utils --
 #include "init_utils.h"
 #include "init_seg.h"
+#include "flood_fill.h"
 #include "compact_spix_3d.h"
 #include "structs_3d.h"
 #include "update_params_3d.h"
@@ -120,6 +121,11 @@ SuperpixelParams3d run_bass3d(PointCloudData& data, SpixMetaData& args, Logger* 
 
     // -- init sp_params --
     mark_active_init(sp_params,params.spix_ptr(),data.bids,params.csum_nspix_ptr(),data.V);
+
+    // -- ensure clusters are contiguous --
+    update_params(sp_params,sp_helper,data,params,args,logger);
+    flood_fill(data,sp_params,params.spix_ptr(),params.csum_nspix_ptr(),nspix_sum);
+
   
     // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
     //

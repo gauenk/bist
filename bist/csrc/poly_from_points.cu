@@ -132,7 +132,7 @@ reorder_vertices_backtracking_cycle(uint32_t* list_of_vertices, uint32_t* csr_ed
     //     return;
     // }
     
-    // // Safety check for array bounds
+    // // Safety check for array boundsla
     // if (nspix_size > 256) return;
     
     // bool visited[256];

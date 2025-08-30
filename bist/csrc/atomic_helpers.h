@@ -2,8 +2,9 @@
 #define ATOMIC_HELPERS_H
 
 
-extern "C" {
+// extern "C" {
 
+namespace {
 
 __device__ uint64_t combine(uint32_t size, uint32_t id);
 __device__ uint32_t extract_size(uint64_t combined);
@@ -14,6 +15,7 @@ __device__ void atomic_max_update(uint64_t* addr, uint32_t new_size, uint32_t ne
 __device__ void atomic_min_update_int(uint64_t* addr, int new_size, int new_id);
 __device__ void atomic_max_update_int(uint64_t* addr, int new_size, int new_id);
 __device__ void atomic_min_update_float(uint64_t* addr, float new_size, int new_id);
+__device__ void atomic_min_update_float_uint32(uint64_t* addr, float new_size, uint32_t new_id);
 __device__ float atomicMaxFloat(float* address, float val);
 
 
@@ -157,6 +159,30 @@ __device__ void inline atomic_max_update_int(uint64_t* addr, int new_size, int n
 
 // Atomic compare-and-update
 __device__ void inline atomic_min_update_float(uint64_t* addr, float new_size, int new_id) {
+    uint64_t old = *addr;
+    // uint64_t new_value = _combine((uint32_t)new_size, (uint32_t)new_id);
+    uint32_t new_size_32 = *reinterpret_cast<uint32_t*>(&new_size);
+    uint32_t new_id_32 = *reinterpret_cast<uint32_t*>(&new_id);
+    uint64_t new_value = _combine(new_size_32,new_id_32);
+
+    while (true) {
+      // float old_size = static_cast<float>(_extract_size(old));
+      uint32_t old_size_32 = _extract_size(old);
+      float old_size = *reinterpret_cast<float*>(&old_size_32);
+      if (new_size < old_size) {
+          uint64_t prev = (uint64_t)atomicCAS((unsigned long long*)addr,
+                                                (unsigned long long)old,
+                                                (unsigned long long)new_value);
+          if (prev == old) break; // Success
+          old = prev;             // Retry with updated value
+        } else {
+            break; // No update needed
+        }
+    }
+}
+
+// Atomic compare-and-update
+__device__ void atomic_min_update_float_uint32(uint64_t* addr, float new_size, uint32_t new_id) {
     uint64_t old = *addr;
     // uint64_t new_value = _combine((uint32_t)new_size, (uint32_t)new_id);
     uint32_t new_size_32 = *reinterpret_cast<uint32_t*>(&new_size);

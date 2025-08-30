@@ -65,6 +65,7 @@ set(SHARED_SOURCES_3D
   bist/csrc/bass3d.cu
   bist/csrc/scannet_reader.cu
   bist/csrc/compact_spix_3d.cu
+  bist/csrc/flood_fill.cu
   bist/csrc/extract_edges.cu
   bist/csrc/csr_edges.cu
   bist/csrc/graph_coloring.cu
