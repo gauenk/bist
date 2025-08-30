@@ -50,6 +50,7 @@ __host__ void update_seg(spix_params* aos_params, spix_helper* sp_helper, PointC
     int threads_per_block = WARPS_PER_BLOCK * THREADS_PER_WARP;
     int ArtNumThreads(threads_per_block);
     int ArtNumBlocks((data.V + WARPS_PER_BLOCK - 1) / WARPS_PER_BLOCK);
+    //cudaMemset(is_simple_point, 1, data.V*sizeof(bool));
 
     // assert(nbatch==1);
     for (int iter = 0 ; iter < args.niters_seg; iter++){
@@ -57,7 +58,6 @@ __host__ void update_seg(spix_params* aos_params, spix_helper* sp_helper, PointC
         find_border_vertex<<<VertexBlocks,NumThreads>>>(spix,border,data.csr_edges,data.csr_eptr,data.V);
 
         for (int graph_color_index=0; graph_color_index < data.gchrome; graph_color_index++){
-            //cudaMemset(is_simple_point, 1, data.V*sizeof(bool));
 
             approximate_articulation_points<<<ArtNumBlocks,ArtNumThreads>>>(spix,data.csr_edges,data.csr_eptr,is_simple_point,neigh_neq,data.V);
             // gpuErrchk( cudaPeekAtLastError() );
@@ -70,11 +70,15 @@ __host__ void update_seg(spix_params* aos_params, spix_helper* sp_helper, PointC
                                                           data.V,args.sigma2_app,args.potts);
             // gpuErrchk( cudaPeekAtLastError() );
             // gpuErrchk( cudaDeviceSynchronize() );
+            
+            // -- log it! --
+            if (logger!=nullptr){
+                printf("log it baby!\n");
+                logger->boundary_update(data,soa_params,aos_params);
+            }
 
         }
     }
-    // cudaMemset(border, 0, data.V*sizeof(bool));
-    // find_border_vertex<<<VertexBlocks,NumThreads>>>(spix, border, npix, width, height);
 }
 
 __global__

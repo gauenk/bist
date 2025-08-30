@@ -24,6 +24,14 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <sstream>
+#include <iomanip>
+
+#include <vector>
+#include <string>
+#include <tuple>
+#include <filesystem>
+
 
 
 struct alignas(32) spix_helper {
@@ -70,7 +78,6 @@ struct SuperpixelParams3d{
   uint32_t nspix_sum = 0;
   int V;
   int B;
-
 
   // -- explicit pointer casts --
   uint32_t* spix_ptr() {
@@ -164,149 +171,6 @@ struct SpixMetaData {
     {}
 };
 
-/*********************************
-
-  -=-=-=-    Float3   -=-=-=-=-
-
-**********************************/
-
-
-// struct alignas(16) spix_params{
-//     // -- appearance --
-//     float3 mu_app;
-//     /* float3 sigma_app; */
-//     float3 prior_mu_app;
-//     /* float3 prior_sigma_app; */
-//     int prior_mu_app_count; // kappa (kappa_app)
-//     /* int prior_sigma_app_count; // nu */
-//     // -- shape --
-//     double2 mu_shape;
-//     double3 sigma_shape;
-//     double2 prior_mu_shape;
-//     double3 prior_sigma_shape;
-//     double3 sample_sigma_shape;
-//     int prior_mu_shape_count; // lambda term; (prior mu count)
-//     int prior_sigma_shape_count; // nu term; (prior shape count)
-//     double3 prior_icov;
-//     // double3 prior_icov_eig;
-//     // -- helpers --
-//     /* double logdet_sigma_app; */
-//     double logdet_sigma_shape;
-//     double logdet_prior_sigma_shape;
-//     // -- priors --
-//     double prior_lprob;
-//     /* double prior_mu_i_lprob; */
-//     /* double prior_sigma_i_lprob; */
-//     /* double prior_mu_s_lprob; */
-//     /* double prior_sigma_s_lprob; */
-//     // -- helpers --
-//     int count;
-//     float icount; // invalid count; to set the prior for split
-//     int sm_count;
-//     float prior_count; // df and lam for shape and appearance
-//     int valid;
-//     bool prop;
-// };
-
-// struct alignas(16) spix_helper{
-//     float3 sum_app;
-//     double3 sq_sum_app;
-//     longlong2 sum_shape;
-//     longlong3 sq_sum_shape;
-// };
-
-// struct alignas(16) spix_helper_sm {
-//     double3 sum_app;
-//     double3 sq_sum_app;
-//     longlong2 sum_shape;
-//     // int2 sum_shape;
-//     longlong3 sq_sum_shape;
-//     /* float3 squares_i; */
-//     int count_f;
-//     /* float3 b_n; */
-//     /* float3 b_n_f; */
-//     float3 b_n_app;
-//     float3 b_n_f_app;
-//     /* float3 b_n_shape; */
-//     /* float3 b_n_shape_f; */
-//     float b_n_shape_det;
-//     float b_n_f_shape_det;
-//     /* float3 numerator; */
-//     float numerator_app;
-//     float numerator_f_app;
-//     float3 denominator;
-//     float3 denominator_f;
-//     // -- ... --
-//     float lprob_shape;
-//     // -- ... --
-//     float lprob_f;
-//     float lprob_s_cond;
-//     float lprob_s_ucond;
-//     float lprob_k_cond;
-//     float lprob_k_ucond;
-//     // -- [app; for dev] --
-//     float lprob_f_app;
-//     float lprob_s_cond_app;
-//     float lprob_k_cond_app;
-//     // -- ... --
-//     float hasting;
-//     bool select;
-//     bool merge; // a bool
-//     bool remove;
-//     bool stop_bfs;
-//     int count;
-//     int max_sp;
-// };
-
-
-// struct alignas(16) spix_helper_sm_v2 {
-//     // -- summary stats --
-//     double3 sum_app;
-//     double3 sq_sum_app;
-//     longlong2 sum_shape;
-//     longlong3 sq_sum_shape;
-//     // -- computed stats --
-//     double3 sigma_s;
-//     double3 sigma_k;
-//     double3 sigma_f;
-//     // -- whatever --
-//     float3 b_n_app;
-//     float3 b_n_f_app;
-//     float b_n_shape_det;
-//     float b_n_f_shape_det;
-//     float numerator_app;
-//     float numerator_f_app;
-//     float3 denominator;
-//     float3 denominator_f;
-//     // -- app --
-//     float lprob_k_cond_app;
-//     float lprob_k_ucond_app;
-//     float lprob_s_cond_app;
-//     float lprob_s_ucond_app;
-//     float lprob_f_app;
-//     // -- shape --
-//     float lprob_k_cond_shape;
-//     float lprob_k_ucond_shape;
-//     float lprob_s_cond_shape;
-//     float lprob_s_ucond_shape;
-//     float lprob_f_shape;
-//     // -- helpers --
-//     float hasting;
-//     bool merge; // a bool
-//     bool select;
-//     bool remove;
-//     int count;
-//     int ninvalid;
-//     int max_sp;
-// };
-
-
-// struct Helpers3d{
-//     sp_params
-//     SuperpixelParams3d(size_t size) {
-
-//     }
-// }
 
 struct PointCloudData {
     // Core data arrays
@@ -356,62 +220,17 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
    }
 }
 
+
+
 class Logger {
 
 public:
-    int major_ix = 0;
-    int minor_ix = 0;
-    int npix = 0;
-    int height = 0;
-    int width = 0;
-    int nspix = 0;
-    int niters = 0;
-    int niters_seg = 0;
     int bndy_ix = 0;
-    int split_ix = 0;
-    int merge_ix = 0;
-    int relabel_ix = 0;
-    int filled_ix = 0;
-    int shift_ix = 0;
-    int frame_index = 0;
-    int merge_details_ix = 0;
-    thrust::device_vector<int> spix;
-    thrust::device_vector<int> split_prop;
-    thrust::device_vector<int> merge_prop;
-    thrust::device_vector<float> split_hastings;
-    thrust::device_vector<float> merge_hastings;
-    thrust::device_vector<int> relabel;
-    thrust::device_vector<int> filled;
-    const std::string save_directory;
-
-  Logger(const std::string& directory, int frame_index, int height, int width, int nspix,int niters,int niters_seg);
-//   void save();
-//   template <typename T>
-//   void save_seq(const std::string& directory, const thrust::device_vector<T>& device_vec);
-//   template <typename T>
-//   void save_seq_v2(const std::string& directory, const thrust::device_vector<T>& device_vec, int nftrs);
-//   template <typename T>
-//   void save_to_csv(const thrust::device_vector<T>& device_vec, const std::string& filename, int h, int w);
-//   void save_shifted_spix(int* spix);
-//   void boundary_update(int* seg);
-//   void log_filled(int* seg);
-//   void log_split(int* sm_seg1, int* sm_seg2);
-//   void log_merge(int* seg, int* sm_pairs, int nspix);
-//   void log_merge_details(int* sm_pairs,spix_params* sp_params,
-//                          spix_helper_sm_v2* sm_helper,
-//                          const int nspix_buffer, float alpha, float merge_alpha);
-//   // void log_relabel(uint64_t* comparisons, float* ss_comps, bool* is_living,
-//   //                  int* relabel_id, float epsilon_new, float epsilon_reid, int nspix);
-//   void log_relabel(int* spix);
-//   template <typename T>
-//   void save_seq_frame(const std::string& directory, const thrust::device_vector<T>& img,
-//                       int frame_index, int height, int width);
-//   std::string get_filename(const std::string& directory, int seq_index);
-
+    std::vector<std::filesystem::path> log_roots;
+  Logger(const std::filesystem::path& _output_root,
+        std::vector<std::filesystem::path> scene_paths);
+  void boundary_update(PointCloudData& data, SuperpixelParams3d& params, spix_params* sp_params);
 };
-
-
-
 
 
 

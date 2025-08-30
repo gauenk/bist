@@ -7,7 +7,7 @@
 /***********************************************
 
           Compute Cluster Parameters
-          
+
 ************************************************/
 
 
@@ -185,7 +185,12 @@ void update_params_kernel(spix_params* sp_params, spix_helper* sp_helper,
     // -- unpack --
     spix_params p = sp_params[k];
     spix_helper h = sp_helper[k];
-    assert(p.count>0);
+    if (p.count<=0){
+      p.valid = 0;
+      return;
+    }
+    
+    // -- local vars --
     int pc = sp_size * sp_size;
     double prior_diag = pc*pc;
     double total_count = (double) p.count + pc*50;
@@ -222,158 +227,3 @@ void update_params_kernel(spix_params* sp_params, spix_helper* sp_helper,
     sp_params[k].cov_pos = icov;
     sp_params[k].logdet_sigma_shape = log(det);
 }
-
-//   // -- read curr --
-// 	int count_int = sp_params[k].count;
-// 	float pc = sp_params[k].prior_count; 
-// 	float prior_sigma_s_2 = pc * pc;
-// 	// float prior_sigma_s_2 = pc * sp_size;
-// 	double count = count_int * 1.0;
-//   double2 mu_shape;
-//   float3 mu_app;
-//   double3 sigma_shape;
-// 	// double total_count = (double) count_int + pc;
-// 	// double total_count = (double) count_int + pc*50;
-// 	double total_count = (double) count_int + pc*50;
-
-//     // --  sample means --
-// 	// if (count_int<=0){ return; }
-// 	if (count_int<=0){
-//       sp_params[k].valid = 0; // invalidate empty spix?
-//       return;
-//     }
-
-//     // -- get prior --
-//     double3 prior_sigma_shape;
-//     // double3 prior_sigma_shape = sp_params[k].prior_sigma_shape;
-//     // double pr_det = prior_sigma_shape.x*prior_sigma_shape.z - \
-//     //   prior_sigma_shape.y*prior_sigma_shape.y;
-//     // // printf("[a:%d] sxx,syx,syy: %lf %lf %lf %lf\n",
-//     // //        k,prior_sigma_shape.x,prior_sigma_shape.y,prior_sigma_shape.z,pr_det);
-//     // double tmp = prior_sigma_shape.x;
-//     // prior_sigma_shape.x = prior_sigma_shape.z/pr_det;
-//     // prior_sigma_shape.y = prior_sigma_shape.y/pr_det;
-//     // prior_sigma_shape.z = tmp/pr_det;
-//     // prior_icov_eig.
-//     // printf("[b:%d] sxx,syx,syy: %lf %lf %lf %f\n",
-//     //        k,prior_sigma_shape.x,prior_sigma_shape.y,prior_sigma_shape.z,pc);
-//     // prior_sigma_shape.x = pc * sp_size; // not me
-//     // prior_sigma_shape.y = 0;
-//     // prior_sigma_shape.z = pc * sp_size; // not me
-
-//     // -- [deploy] prior shape --
-//     bool prop = sp_params[k].prop;
-//     double3 prior_icov;
-//     double pr_det,pr_det_raw;
-//     double3 _prior_icov = sp_params[k].sample_sigma_shape;
-//     // if ((prop) and false){
-//     if ((prop) and prop_flag){
-//       prior_icov = _add_sigma_smoothing(_prior_icov,pc,pc,sp_size);
-//       pr_det = prior_icov.x * prior_icov.z  - \
-//         prior_icov.y * prior_icov.y;
-//       if (pr_det <= 0){
-//         printf("[%d]: (%2.3lf,%2.3lf,%2.3lf)\n",k,prior_icov.x,prior_icov.y,prior_icov.z);
-//         assert(pr_det>0);
-//       }
-//       pr_det_raw = pr_det;
-//       pr_det = sqrt(pr_det);
-//       // double pc_sqrt = sqrt(pc);
-//       prior_sigma_shape.x = pc/pr_det * prior_icov.x;
-//       prior_sigma_shape.y = pc/pr_det * prior_icov.y;
-//       prior_sigma_shape.z = pc/pr_det * prior_icov.z;
-//     }else{
-//       prior_icov = sp_params[k].prior_icov;
-//       pr_det = prior_icov.x * prior_icov.z  - \
-//         prior_icov.y * prior_icov.y;
-//       if (pr_det <= 0){
-//         printf("[%d]: (%2.3lf,%2.3lf,%2.3lf)\n",k,prior_icov.x,prior_icov.y,prior_icov.z);
-//         assert(pr_det>0);
-//       }
-//       pr_det_raw = pr_det;
-//       pr_det = sqrt(pr_det);
-//       // double pc_sqrt = sqrt(pc);
-//       prior_sigma_shape.x = pc/pr_det * prior_icov.x;
-//       prior_sigma_shape.y = pc/pr_det * prior_icov.y;
-//       prior_sigma_shape.z = pc/pr_det * prior_icov.z;
-//     }
-//     // if (k == 100){
-//     //   printf("[update_params]: %2.3lf %2.3lf | %2.3lf %2.3lf %2.3lf\n",
-//     //          // pc,pr_det,prior_icov.x,prior_icov.y,prior_icov.z);
-//     //          pc,pr_det,prior_sigma_shape.x,prior_sigma_shape.y,prior_sigma_shape.z);
-//     // }
-
-
-//     // -- [dev] prior shape --
-//     // prior_sigma_shape.x = pc;// * pc;
-//     // prior_sigma_shape.y = 0;
-//     // prior_sigma_shape.z = pc;// * pc;
-
-//     // -- appearance --
-//     mu_app.x = sp_helper[k].sum_app.x / count;
-//     mu_app.y = sp_helper[k].sum_app.y / count;
-//     mu_app.z = sp_helper[k].sum_app.z / count;
-//     sp_params[k].mu_app = mu_app;
-
-//     // mu_app.x = 0;
-//     // mu_app.y = 0;
-//     // mu_app.z = 0;
-//     // if ((abs(mu_app.x)>10) || (abs(mu_app.y)>10) || (abs(mu_app.z)>10)){
-//     //   printf("[updated_params.cu] [%d] %2.3f, %2.3f, %2.3f\n",k,mu_app.x,mu_app.y,mu_app.z);
-//     // }
-//     // sp_params[k].mu_app.x = mu_app.x;
-//     // sp_params[k].mu_app.y = mu_app.y;
-//     // sp_params[k].mu_app.z = mu_app.z;
-//     // sp_params[k].sigma_app.x = sp_helper[k].sq_sum_app.x/count - mu_app.x*mu_app.x;
-//     // sp_params[k].sigma_app.y = sp_helper[k].sq_sum_app.y/count - mu_app.y*mu_app.y;
-//     // sp_params[k].sigma_app.z = sp_helper[k].sq_sum_app.z/count - mu_app.z*mu_app.z;
-
-//     // -- shape --
-//     mu_shape.x = sp_helper[k].sum_shape.x / count;
-//     mu_shape.y = sp_helper[k].sum_shape.y / count;
-//     sp_params[k].mu_shape = mu_shape;
-//     // sp_params[k].mu_shape.x = mu_shape.x;
-//     // sp_params[k].mu_shape.y = mu_shape.y;
-
-//     // -- sample covariance --
-//     sigma_shape.x = sp_helper[k].sq_sum_shape.x - count*mu_shape.x*mu_shape.x;
-//     sigma_shape.y = sp_helper[k].sq_sum_shape.y - count*mu_shape.x*mu_shape.y;
-//     sigma_shape.z = sp_helper[k].sq_sum_shape.z - count*mu_shape.y*mu_shape.y;
-
-//     // -- inverse --
-//     // sigma_shape.x = (prior_sigma_s_2 + sigma_shape.x) / (total_count - 3.0);
-//     // sigma_shape.y = sigma_shape.y / (total_count - 3);
-//     // sigma_shape.z = (prior_sigma_s_2 + sigma_shape.z) / (total_count - 3.0);
-//     sigma_shape.x = (pc*prior_sigma_shape.x + sigma_shape.x) / (total_count + 3.0);
-//     sigma_shape.y = (pc*prior_sigma_shape.y + sigma_shape.y) / (total_count + 3.0);
-//     sigma_shape.z = (pc*prior_sigma_shape.z + sigma_shape.z) / (total_count + 3.0);
-
-//     // -- correct sample cov if not invertable --
-//     double det = sigma_shape.x*sigma_shape.z - sigma_shape.y*sigma_shape.y;
-//     if (det <= 0){
-//       sigma_shape.x = sigma_shape.x + 0.00001;
-//       sigma_shape.z = sigma_shape.z + 0.00001;
-//       det = sigma_shape.x * sigma_shape.z - sigma_shape.y * sigma_shape.y;
-//       if (det<=0){ det = 0.00001; } // safety hack
-//     }
-
-//     bool any_nan = isnan(sigma_shape.x) and isnan(sigma_shape.y) and isnan(sigma_shape.z);
-//     if ((any_nan)){
-//       printf("[%d|%d] %2.3lf %2.3lf %2.3lf | %2.3lf %2.3lf %2.3lf | %2.3lf %2.3lf %2.3lf | %2.3lf %2.3lf %2.3lf\n",
-//              k,prop?1:0,pc,pr_det,pr_det_raw,
-//              prior_sigma_shape.x,prior_sigma_shape.y,prior_sigma_shape.z,
-//              prior_icov.x,prior_icov.y,prior_icov.z,
-//              _prior_icov.x,_prior_icov.y,_prior_icov.z);
-
-//     }
-//     assert(not(any_nan));
-//     // assert(not(isnan(sigma_shape.x)));
-//     // assert(not(isnan(sigma_shape.y)));
-//     // assert(not(isnan(sigma_shape.z)));
-
-//     sp_params[k].sigma_shape.x = sigma_shape.z/det;
-//     sp_params[k].sigma_shape.y = -sigma_shape.y/det;
-//     sp_params[k].sigma_shape.z = sigma_shape.x/det;
-// //     sp_params[k].logdet_sigma_shape = log(det);
-
-// }
-

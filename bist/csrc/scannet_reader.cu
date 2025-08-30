@@ -175,7 +175,7 @@ bool write_spix(const std::vector<std::filesystem::path>& scene_files,
 
         // -- write --
         ScanNetScene scene;
-        if(!scene.write_spix_ply(scene_file,output_root,mu_app,mu_pos,var_pos,cov_pos,nspix)){
+        if(!scene.write_spix_ply_with_fn(scene_file,output_root,mu_app,mu_pos,var_pos,cov_pos,nspix)){
             exit(1);
         }
 
@@ -260,7 +260,10 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
 
     free(ftrs);
     free(pos);
+    free(edges);
     free(ptr);
+    free(eptr);
+    free(gcolor);
     if (labels != nullptr){
         free(labels);
     }
@@ -595,7 +598,7 @@ bool ScanNetScene::write_ply(const std::filesystem::path& scene_path,
 };
 
 
-bool ScanNetScene::write_spix_ply(const std::filesystem::path& scene_path, 
+bool ScanNetScene::write_spix_ply_with_fn(const std::filesystem::path& scene_path, 
                                   const std::filesystem::path& output_root,
                                   thrust::host_vector<float3>& ftrs, 
                                   thrust::host_vector<double3>& pos,
@@ -611,10 +614,25 @@ bool ScanNetScene::write_spix_ply(const std::filesystem::path& scene_path,
     if (!std::filesystem::exists(write_path)) {
         std::filesystem::create_directories(write_path);
     }
-
     // -- get filenames --
     std::filesystem::path ply_file = write_path / (scene_name + "_spix.ply");
     std::cout << ply_file << std::endl;
+    
+    thrust::host_vector<uint32_t> poly(0); // spoof for now.
+    thrust::host_vector<uint32_t> spix_sizes(0); // spoof for now.
+    this->write_spix_ply(ply_file,ftrs,pos,var,cov,poly,spix_sizes,nspix);
+    return true;
+}
+
+
+bool ScanNetScene::write_spix_ply(const std::filesystem::path& ply_file,
+                                  thrust::host_vector<float3>& ftrs, 
+                                  thrust::host_vector<double3>& pos,
+                                  thrust::host_vector<double3>& var, 
+                                  thrust::host_vector<double3>& cov, 
+                                  thrust::host_vector<uint32_t>& poly,
+                                  thrust::host_vector<uint32_t>& spix_sizes_csum,
+                                  int nspix) {
     
     // -- delete existing file if it exists --
     if (std::filesystem::exists(ply_file)) {
@@ -646,6 +664,10 @@ bool ScanNetScene::write_spix_ply(const std::filesystem::path& scene_path,
     header += "property uchar green\n";
     header += "property uchar blue\n";
     header += "property uchar alpha\n";
+    if (poly.size() > 0){
+        header += "element face " + std::to_string(1) + "\n";
+        header += "property list uchar int vertex_indices\n";
+    }
     header += "end_header\n";
     file.write(header.c_str(), header.length());
 
@@ -694,7 +716,20 @@ bool ScanNetScene::write_spix_ply(const std::filesystem::path& scene_path,
         file.write(reinterpret_cast<const char*>(&g), sizeof(unsigned char));
         file.write(reinterpret_cast<const char*>(&b), sizeof(unsigned char));
         file.write(reinterpret_cast<const char*>(&alpha), sizeof(unsigned char));
+    }
 
+    if (poly.size()>0){
+        for (int i = 0; i < 1; ++i) {
+            int start = spix_sizes_csum[i];
+            int end = spix_sizes_csum[i+1];
+            unsigned char spix_size = end - start;
+            file.write(reinterpret_cast<char*>(&spix_size), sizeof(unsigned char));
+            for (int index=start; index < end; index++){
+                int vertex_id = poly[index];
+                file.write(reinterpret_cast<char*>(&vertex_id), sizeof(int));
+                printf("[%d,%d] %d\n",index,spix_size,vertex_id);
+            }
+        }
     }
 
     file.close();

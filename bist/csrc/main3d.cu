@@ -17,17 +17,9 @@
 #include <opencv2/opencv.hpp>
 
 // -- local --
-// #include "file_io.h"
-// #include "structs.h"
 #include "init_utils.h"
-// #include "rgb2lab.h"
 #include "bass3d.h"
-// #include "seg_utils.h"
-// #include "split_disconnected.h"
-// #include "main_utils.h"
-//#include "utils.h"
 #include "structs_3d.h"
-
 //#include "pointcloud_reader.h"
 #include "scannet_reader.h"
 #include "csr_edges.h"
@@ -151,6 +143,7 @@ int main(int argc, char **argv) {
         std::filesystem::create_directories(output_root);
     }
 
+
     // -- control the number of spix --
     int nbatch = 1;
     int nftrs = 3;
@@ -247,22 +240,20 @@ int main(int argc, char **argv) {
             // int nspix = -1;
             // SuperpixelParams* params = nullptr;
 
-            cv::String log_root = string(output_root)+"log/";
-            Logger* logger = nullptr;
-            // if (logging==1){
-            //   ensureDirectoryExists(log_root);
-            //   logger = new Logger3d(log_root,count,height,width,10*0,niters,4);
-            // }
-
             // -- start timer --
             clock_t start,finish;
             cudaDeviceSynchronize();
             start = clock();
 
+            
+            Logger* logger = nullptr;
             // -- run segmentation --
             PointCloudData data{ftrs, pos, gcolors, csr_edges, bids, 
                                 vptr, csr_eptr, dim_sizes, gchrome, 
                                 scene_files_b.size(), V_total, E_total};
+            if (logging==1){
+                logger = new Logger(output_root,scene_files_b);
+            }
             SuperpixelParams3d params = run_bass3d(data, args, logger);
 
             // -- benchmarking/tracking --

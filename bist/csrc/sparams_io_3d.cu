@@ -43,7 +43,7 @@ void aos_to_soa_kernel(spix_params* aos_params, float3* mu_app, double3* mu_pos,
 
 }
 
-// Array of Structures -> Structures of Arrays
+// Array of Structures -> Structures of Arrays [spix_params -> SuperpixelParams3d]
 __host__ void aos_to_soa(spix_params* aos_params, SuperpixelParams3d& soa_params){
   
   // -- unpack pointers --

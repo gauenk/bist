@@ -73,9 +73,11 @@ set(SHARED_SOURCES_3D
   bist/csrc/update_params_3d.cu
   bist/csrc/update_seg_3d.cu
   bist/csrc/articulation_points.cu
+  bist/csrc/poly_from_points.cu
+  bist/csrc/logger_3d.cu
 )
 
-# ADD THESE LINES - Explicitly mark .cu files as CUDA
+# Explicitly mark .cu files as CUDA
 set_source_files_properties(
     bist/csrc/main.cu
     bist/csrc/main3d.cu

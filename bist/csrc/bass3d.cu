@@ -21,26 +21,14 @@
 // #include "structs.h"
 
 // -- utils --
-// #include "rgb2lab.h"
-// #include "sparams_io.h"
-// #include "seg_utils.h"
 #include "init_utils.h"
 #include "init_seg.h"
-// #include "init_sparams.h"
-// #include "compact_spix.h"
-// #include "compact_spix_cub.h"
 #include "compact_spix_3d.h"
-// #include "sparams_io.h"
 #include "structs_3d.h"
 #include "update_params_3d.h"
 #include "update_seg_3d.h"
 #include "sparams_io_3d.h"
-
-// -- primary functions --
-// #include "split_merge_orig.h"
-// #include "update_params.h"
-// #include "update_seg.h"
-// #include "compact_spix.h" // only for controllable bass
+#include "seg_utils_3d.h"
 
 #define THREADS_PER_BLOCK 512
 
@@ -53,16 +41,21 @@
 
 __host__ void bass(spix_params* aos_params, spix_helper* sm_helper, PointCloudData& data, SuperpixelParams3d& soa_params, SpixMetaData& args, Logger* logger){
 
-    // -- init --
-    for (int idx = 0; idx < args.niters; idx++) {
+  // -- init --
+  // todo; batchify both fxn; right now spix_ids are 0 - nspix for each batch so indexing is off.. easy fix just not done yet.
+  for (int idx = 0; idx < args.niters; idx++) {
 
-      // -- Update Parameters --
-      update_params(aos_params,sm_helper,data,soa_params,args,logger);
+    // -- Update Parameters --
+    update_params(aos_params,sm_helper,data,soa_params,args,logger);
 
-      // -- Update Segmentation --
-      update_seg(aos_params,sm_helper,data,soa_params,args,logger);
+    // -- Update Segmentation --
+    update_seg(aos_params,sm_helper,data,soa_params,args,logger);
 
-    }
+  }
+
+  // -- set one-sided border at end for nicer viz --
+  cudaMemset(soa_params.border_ptr(), 0, data.V*sizeof(bool));
+  set_border_end(soa_params.spix_ptr(),soa_params.border_ptr(),data.csr_edges,data.csr_eptr,data.V);
 
 }
 
@@ -78,8 +71,6 @@ __host__ void bass(spix_params* aos_params, spix_helper* sm_helper, PointCloudDa
 //   uint64_t max_val = thrust::reduce(thrust::device,in_ptr, in_ptr + nbatch,(uint64_t)0,thrust::maximum<uint64_t>());
 //   cudaMemcpy(&nspix_max, &max_val, sizeof(uint64_t), cudaMemcpyHostToDevice);
 // }
-
-
 
 
 __global__ void init_mark_active_kernel(spix_params* sp_params, uint32_t* spix, uint8_t* vbids, uint32_t* csum_nspix, int V) {
@@ -205,9 +196,6 @@ SuperpixelParams3d run_bass3d(PointCloudData& data, SpixMetaData& args, Logger* 
     cudaFree(sp_params);
 
     // -- return! --
-    //return std::make_tuple(_spix,border,params);
-    // return std::make_tuple(_spix,border);
-    //return std::make_tuple(spix,border,params);
     return params;
 }
 
