@@ -1,7 +1,9 @@
 /******************************************************************
  * 
  *  Extract the polygon edges from a set of vertices that 
- *  form a contiguous cluster.
+ *  form a contiguous cluster... Since clusters may not be 
+ *  simple polygons this didn't really work out..
+ *  instead we just write the border edges and bold them for the viz
  * 
  ********************************************************************/
 
@@ -10,6 +12,7 @@
 
 #define THREADS_PER_BLOCK 512
 
+
 std::tuple<thrust::device_vector<uint32_t>,thrust::device_vector<uint32_t>>
 poly_from_points(PointCloudData& data, SuperpixelParams3d& params, bool* border){
 
@@ -17,6 +20,18 @@ poly_from_points(PointCloudData& data, SuperpixelParams3d& params, bool* border)
     int NumThreads = THREADS_PER_BLOCK;
     int vertex_nblocks = ceil( double(data.V) / double(NumThreads) ); 
     dim3 VertexBlocks(vertex_nblocks);
+
+    // // -- view --
+    // thrust::host_vector<uint32_t> spix_cpu(data.V);
+    // thrust::device_ptr<uint32_t> spix_dev(params.spix_ptr());
+    // thrust::copy(spix_dev, spix_dev + data.V, spix_cpu.begin());
+    // for(int ix = 0; ix < 10; ix++){
+    //     printf("spix[%d] = %d\n",ix,spix_cpu[ix]);
+    // }
+    // for(int ix = data.V-10; ix < data.V; ix++){
+    //     printf("spix[%d] = %d\n",ix,spix_cpu[ix]);
+    // }
+
 
     // // ...
     // int nborder_sum = thrust::count(params.border.begin(), params.border.end(), true);
@@ -35,8 +50,8 @@ poly_from_points(PointCloudData& data, SuperpixelParams3d& params, bool* border)
     thrust::device_vector<uint32_t> nvertex_by_spix_csum(params.nspix_sum+1, 0);
     thrust::inclusive_scan(nvertex_by_spix.begin(), nvertex_by_spix.end(), nvertex_by_spix_csum.begin() + 1);
     
-    // thrust::host_vector<uint32_t> tmp = nvertex_by_spix_csum;
-    // for(int ix = 0; ix < tmp.size(); ix++){
+    // thrust::host_vector<uint32_t> tmp = nvertex_by_spix;
+    // for(int ix = 0; ix < 10; ix++){
     //     printf("tmp[%d] = %d\n",ix,tmp[ix]);
     // }
 
@@ -54,7 +69,9 @@ poly_from_points(PointCloudData& data, SuperpixelParams3d& params, bool* border)
     // gpuErrchk( cudaPeekAtLastError() );
     // gpuErrchk( cudaDeviceSynchronize() );
     // exit(1);
+    assert(V_edges>0); // check if border has been set
 
+    //printf("V_edges: %d\n",V_edges);
     // -- re-order each superpixel --
     int spix_nblocks = ceil( double(params.nspix_sum) / double(NumThreads) ); 
     dim3 SpixBlocks(spix_nblocks);
@@ -63,8 +80,10 @@ poly_from_points(PointCloudData& data, SuperpixelParams3d& params, bool* border)
                                                           data.csr_edges, data.csr_eptr, data.bids, 
                                                           params.csum_nspix_ptr(),thrust::raw_pointer_cast(nvertex_by_spix_csum.data()),
                                                           thrust::raw_pointer_cast(ordered_verts.data()),data.pos,data.V,params.nspix_sum);
-    gpuErrchk( cudaPeekAtLastError() );
-    gpuErrchk( cudaDeviceSynchronize() );
+
+
+    // gpuErrchk( cudaPeekAtLastError() );
+    // gpuErrchk( cudaDeviceSynchronize() );
                                                  
     // exit(1);
     return {ordered_verts,nvertex_by_spix_csum};
@@ -101,8 +120,6 @@ list_vertices_by_spix(uint32_t* list_of_vertices, uint32_t* spix, bool* border, 
 
 }
 
-
-
 __global__ void
 reorder_vertices_backtracking_cycle(uint32_t* list_of_vertices, uint32_t* csr_edges, uint32_t* csr_eptr,
                                    uint8_t* bids, uint32_t* csum_nspix, uint32_t* nvertex_by_spix_csum,
@@ -124,147 +141,147 @@ reorder_vertices_backtracking_cycle(uint32_t* list_of_vertices, uint32_t* csr_ed
     }
     // return;
 
-    // // Handle trivial cases
-    // if (nspix_size <= 2) {
-    //     for (int i = 0; i < nspix_size; i++) {
-    //         output[i] = list_of_vertices[vertex_start_idx + i];
-    //     }
-    //     return;
-    // }
+    // Handle trivial cases
+    if (nspix_size <= 2) {
+        for (int i = 0; i < nspix_size; i++) {
+            output[i] = list_of_vertices[vertex_start_idx + i];
+        }
+        return;
+    }
     
-    // // Safety check for array boundsla
-    // if (nspix_size > 256) return;
+    // Safety check for array boundsla
+    if (nspix_size > 256) return;
     
-    // bool visited[256];
-    // // uint8_t stack[256];
-    // // uint8_t neigh_stack[256];
+    bool visited[256];
+    // uint8_t stack[256];
+    // uint8_t neigh_stack[256];
     
-    // // Initialize visited array
-    // for (int i = 0; i < nspix_size; i++) {
-    //     visited[i] = false;
-    //     // neigh_stack[i] = 0;
-    // }
+    // Initialize visited array
+    for (int i = 0; i < nspix_size; i++) {
+        visited[i] = false;
+        // neigh_stack[i] = 0;
+    }
     
-    // // Start with any boundary vertex
-    // int current_idx = 0;
-    // uint32_t current_vertex = list_of_vertices[vertex_start_idx];
-    // output[0] = current_vertex;
-    // visited[0] = true;
+    // Start with any boundary vertex
+    int current_idx = 0;
+    uint32_t current_vertex = list_of_vertices[vertex_start_idx];
+    output[0] = current_vertex;
+    visited[0] = true;
     
-    // uint32_t prev_vertex = UINT32_MAX;
+    uint32_t prev_vertex = UINT32_MAX;
     
-    // for (int pos = 1; pos < nspix_size; pos++) {
-    //     uint32_t edge_start = csr_eptr[current_vertex];
-    //     uint32_t edge_end = csr_eptr[current_vertex + 1];
+    for (int pos = 1; pos < nspix_size; pos++) {
+        uint32_t edge_start = csr_eptr[current_vertex];
+        uint32_t edge_end = csr_eptr[current_vertex + 1];
         
 
-    //     float3 curr_pos = vertex_pos[current_vertex];
-    //     float curr_x = curr_pos.x;
-    //     float curr_y = curr_pos.y;
-    //     float curr_z = curr_pos.z;
+        float3 curr_pos = vertex_pos[current_vertex];
+        float curr_x = curr_pos.x;
+        float curr_y = curr_pos.y;
+        float curr_z = curr_pos.z;
 
-    //     int best_next_idx = -1;
-    //     float best_score = -1e9;
+        int best_next_idx = -1;
+        float best_score = -1e9;
         
-    //     // Evaluate all boundary neighbors
-    //     for (uint32_t edge_idx = edge_start; edge_idx < edge_end; edge_idx++) {
-    //         uint32_t neighbor = csr_edges[edge_idx];
+        // Evaluate all boundary neighbors
+        for (uint32_t edge_idx = edge_start; edge_idx < edge_end; edge_idx++) {
+            uint32_t neighbor = csr_edges[edge_idx];
             
-    //         // Skip the vertex we came from
-    //         if (neighbor == prev_vertex) continue;
+            // Skip the vertex we came from
+            if (neighbor == prev_vertex) continue;
             
-    //         // Check if neighbor is in boundary list and unvisited
-    //         int neighbor_idx = -1;
-    //         for (int i = 0; i < nspix_size; i++) {
-    //             if (list_of_vertices[vertex_start_idx + i] == neighbor && !visited[i]) {
-    //                 neighbor_idx = i;
-    //                 break;
-    //             }
-    //         }
-    //         if (neighbor_idx == -1) continue;
+            // Check if neighbor is in boundary list and unvisited
+            int neighbor_idx = -1;
+            for (int i = 0; i < nspix_size; i++) {
+                if (list_of_vertices[vertex_start_idx + i] == neighbor && !visited[i]) {
+                    neighbor_idx = i;
+                    break;
+                }
+            }
+            if (neighbor_idx == -1) continue;
             
-    //         float3 neigh_pos = vertex_pos[neighbor];
-    //         float neigh_x = neigh_pos.x;
-    //         float neigh_y = neigh_pos.y;
-    //         float neigh_z = neigh_pos.z;
+            float3 neigh_pos = vertex_pos[neighbor];
+            float neigh_x = neigh_pos.x;
+            float neigh_y = neigh_pos.y;
+            float neigh_z = neigh_pos.z;
 
-    //         // GEOMETRIC HEURISTIC: Choose based on angle consistency
-    //         float score = 0;
+            // GEOMETRIC HEURISTIC: Choose based on angle consistency
+            float score = 0;
             
-    //         if (pos > 1) {
-    //             // We have a previous direction - prefer consistent turning
-    //             uint32_t prev_vertex_actual = output[pos - 2];
+            if (pos > 1) {
+                // We have a previous direction - prefer consistent turning
+                uint32_t prev_vertex_actual = output[pos - 2];
 
-    //             float3 prev_pos = vertex_pos[prev_vertex_actual];
-    //             float prev_x = prev_pos.x;
-    //             float prev_y = prev_pos.y;
-    //             float prev_z = prev_pos.z;
+                float3 prev_pos = vertex_pos[prev_vertex_actual];
+                float prev_x = prev_pos.x;
+                float prev_y = prev_pos.y;
+                float prev_z = prev_pos.z;
                 
-    //             // Previous direction vector
-    //             float prev_dx = curr_x - prev_x;
-    //             float prev_dy = curr_y - prev_y;
-    //             float prev_dz = curr_z - prev_z;
+                // Previous direction vector
+                float prev_dx = curr_x - prev_x;
+                float prev_dy = curr_y - prev_y;
+                float prev_dz = curr_z - prev_z;
                 
-    //             // Next direction vector  
-    //             float next_dx = neigh_x - curr_x;
-    //             float next_dy = neigh_y - curr_y;
-    //             float next_dz = neigh_z - curr_z;
+                // Next direction vector  
+                float next_dx = neigh_x - curr_x;
+                float next_dy = neigh_y - curr_y;
+                float next_dz = neigh_z - curr_z;
                 
-    //             // 3D Cross product for turn direction (gives a vector, not scalar)
-    //             float cross_x = prev_dy * next_dz - prev_dz * next_dy;
-    //             float cross_y = prev_dz * next_dx - prev_dx * next_dz;
-    //             float cross_z = prev_dx * next_dy - prev_dy * next_dx;
-    //             float cross_mag = sqrtf(cross_x*cross_x + cross_y*cross_y + cross_z*cross_z);
+                // 3D Cross product for turn direction (gives a vector, not scalar)
+                float cross_x = prev_dy * next_dz - prev_dz * next_dy;
+                float cross_y = prev_dz * next_dx - prev_dx * next_dz;
+                float cross_z = prev_dx * next_dy - prev_dy * next_dx;
+                float cross_mag = sqrtf(cross_x*cross_x + cross_y*cross_y + cross_z*cross_z);
 
-    //             // Dot product for angle magnitude
-    //             float dot = prev_dx * next_dx + prev_dy * next_dy + prev_dz * next_dz;
-    //             float prev_mag = sqrtf(prev_dx*prev_dx + prev_dy*prev_dy + prev_dz*prev_dz);
-    //             float next_mag = sqrtf(next_dx*next_dx + next_dy*next_dy + next_dz*next_dz);
-    //             if (prev_mag > 0 && next_mag > 0) {
-    //                 float cos_angle = dot / (prev_mag * next_mag);
+                // Dot product for angle magnitude
+                float dot = prev_dx * next_dx + prev_dy * next_dy + prev_dz * next_dz;
+                float prev_mag = sqrtf(prev_dx*prev_dx + prev_dy*prev_dy + prev_dz*prev_dz);
+                float next_mag = sqrtf(next_dx*next_dx + next_dy*next_dy + next_dz*next_dz);
+                if (prev_mag > 0 && next_mag > 0) {
+                    float cos_angle = dot / (prev_mag * next_mag);
                     
-    //                 // In 3D, we need a reference normal to define "counter-clockwise"
-    //                 // Option 1: Use cross product magnitude to prefer smaller turns
-    //                 float sin_angle = cross_mag / (prev_mag * next_mag);
+                    // In 3D, we need a reference normal to define "counter-clockwise"
+                    // Option 1: Use cross product magnitude to prefer smaller turns
+                    float sin_angle = cross_mag / (prev_mag * next_mag);
                     
-    //                 // Prefer smaller turn angles (straighter paths)
-    //                 score = cos_angle - 0.5f * sin_angle; // Bias toward straight continuation
+                    // Prefer smaller turn angles (straighter paths)
+                    score = cos_angle - 0.5f * sin_angle; // Bias toward straight continuation
                     
-    //             }
-    //         } else {
-    //             // First step - in 3D, establish initial direction
-    //             float dx = neigh_x - curr_x;
-    //             float dy = neigh_y - curr_y;
-    //             float dz = neigh_z - curr_z;
+                }
+            } else {
+                // First step - in 3D, establish initial direction
+                float dx = neigh_x - curr_x;
+                float dy = neigh_y - curr_y;
+                float dz = neigh_z - curr_z;
                 
-    //             // Prefer direction with largest component (most "dominant" direction)
-    //             float abs_dx = fabsf(dx);
-    //             float abs_dy = fabsf(dy);
-    //             float abs_dz = fabsf(dz);
-    //             score = fmaxf(abs_dx, fmaxf(abs_dy, abs_dz)); // Prefer "primary" directions
+                // Prefer direction with largest component (most "dominant" direction)
+                float abs_dx = fabsf(dx);
+                float abs_dy = fabsf(dy);
+                float abs_dz = fabsf(dz);
+                score = fmaxf(abs_dx, fmaxf(abs_dy, abs_dz)); // Prefer "primary" directions
                 
-    //         }
+            }
             
-    //         if (score > best_score) {
-    //             best_score = score;
-    //             best_next_idx = neighbor_idx;
-    //         }
-    //     }
+            if (score > best_score) {
+                best_score = score;
+                best_next_idx = neighbor_idx;
+            }
+        }
         
-    //     if (best_next_idx >= 0) {
-    //         uint32_t next_vertex = list_of_vertices[vertex_start_idx + best_next_idx];
-    //         output[pos] = next_vertex;
-    //         visited[best_next_idx] = true;
+        if (best_next_idx >= 0) {
+            uint32_t next_vertex = list_of_vertices[vertex_start_idx + best_next_idx];
+            output[pos] = next_vertex;
+            visited[best_next_idx] = true;
             
-    //         prev_vertex = current_vertex;
-    //         current_vertex = next_vertex;
-    //         current_idx = best_next_idx;
-    //     } else {
-    //         // No valid neighbor found - should not happen in proper boundary
-    //         //printf("[%d] No valid neighbor at position %d\n", spix_id, pos);
-    //         break;
-    //     }
-    // }
+            prev_vertex = current_vertex;
+            current_vertex = next_vertex;
+            current_idx = best_next_idx;
+        } else {
+            // No valid neighbor found - should not happen in proper boundary
+            //printf("[%d] No valid neighbor at position %d\n", spix_id, pos);
+            break;
+        }
+    }
 
 }
     // // Start with first vertex

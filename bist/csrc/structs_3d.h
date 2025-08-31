@@ -178,9 +178,10 @@ struct PointCloudData {
     float3* pos;            // Positions
     uint8_t* gcolors;       // Global colors
     uint32_t* csr_edges;    // CSR format edges
+    uint32_t* csr_eptr;     // CSR edge pointers
     uint8_t* bids;          // Batch IDs
     int* ptr;               // Pointer array
-    uint32_t* csr_eptr;     // CSR edge pointers
+    int* eptr;              // Pointer to index for batch slicing
     float* dim_sizes;       // Dimension sizes
     
     // Scalar parameters
@@ -188,19 +189,57 @@ struct PointCloudData {
     int B;
     int V;
     int E;
-    
+
+    // -- get host vectors for file io --
+
+    thrust::host_vector<float> ftrs_host() {
+      thrust::host_vector<float> on_cpu(3*this->V);
+      thrust::device_ptr<float> dev_ptr(reinterpret_cast<float*>(this->ftrs));
+      thrust::copy(dev_ptr, dev_ptr + 3*this->V, on_cpu.begin());
+      return on_cpu;
+    }
+
+    thrust::host_vector<float> pos_host() {
+      thrust::host_vector<float> on_cpu(3*this->V);
+      thrust::device_ptr<float> dev_ptr(reinterpret_cast<float*>(this->pos));
+      thrust::copy(dev_ptr, dev_ptr + 3*this->V, on_cpu.begin());
+      return on_cpu;
+    }
+
+    thrust::host_vector<uint8_t> gcolors_host() {
+      thrust::host_vector<uint8_t> on_cpu(this->V);
+      thrust::device_ptr<uint8_t> dev_ptr(this->gcolors);
+      thrust::copy(dev_ptr, dev_ptr + this->V, on_cpu.begin());
+      return on_cpu;
+    }
+
+    thrust::host_vector<int> vptr_host() {
+      thrust::host_vector<int> on_cpu(this->B+1);
+      thrust::device_ptr<int> dev_ptr(this->ptr);
+      thrust::copy(dev_ptr, dev_ptr + this->B+1, on_cpu.begin());
+      return on_cpu;
+    }
+
+
+
+    //  PointCloudData data{ftrs, pos, gcolors, csr_edges, csr_eptr, 
+    //                     bids, vptr, eptr, dim_sizes, gchrome, 
+    //                     scene_files_b.size(), V_total, E_total};
+    // if (logging==1){
+
     // Constructor
     PointCloudData(float3* ftrs, float3* pos, uint8_t* gcolors,
-                   uint32_t* csr_edges, uint8_t* bids, int* ptr, 
-                   uint32_t* csr_eptr, float* dim_sizes, 
+                   uint32_t* csr_edges, uint32_t* csr_eptr, 
+                   uint8_t* bids, int* ptr, int* eptr, float* dim_sizes, 
                    uint8_t gchrome, int B, int V, int E)
         : ftrs(ftrs)
         , pos(pos)
         , gcolors(gcolors)
         , csr_edges(csr_edges)
+        , csr_eptr(csr_eptr)
         , bids(bids)
         , ptr(ptr)
-        , csr_eptr(csr_eptr)
+        , eptr(eptr)
         , dim_sizes(dim_sizes)
         , gchrome(gchrome)
         , B(B)

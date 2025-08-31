@@ -35,7 +35,7 @@
 **********************************************/
 
 __host__ void update_seg(spix_params* aos_params, spix_helper* sp_helper, PointCloudData& data, SuperpixelParams3d& soa_params, SpixMetaData& args, Logger* logger){
-    
+
     // -- unpack pointers --
     uint32_t* spix = soa_params.spix_ptr();
     bool* border = soa_params.border_ptr();
@@ -51,6 +51,14 @@ __host__ void update_seg(spix_params* aos_params, spix_helper* sp_helper, PointC
     int ArtNumThreads(threads_per_block);
     int ArtNumBlocks((data.V + WARPS_PER_BLOCK - 1) / WARPS_PER_BLOCK);
     //cudaMemset(is_simple_point, 1, data.V*sizeof(bool));
+        
+    // // -- [dev only!] --
+    // cudaMemset(border, 0, data.V*sizeof(bool));
+    // find_border_vertex<<<VertexBlocks,NumThreads>>>(spix,border,data.csr_edges,data.csr_eptr,data.V);
+    // if (logger!=nullptr){
+    //     logger->boundary_update(data,soa_params,aos_params);
+    // }
+    // return;
 
     // assert(nbatch==1);
     for (int iter = 0 ; iter < args.niters_seg; iter++){
@@ -73,7 +81,6 @@ __host__ void update_seg(spix_params* aos_params, spix_helper* sp_helper, PointC
             
             // -- log it! --
             if (logger!=nullptr){
-                printf("log it baby!\n");
                 logger->boundary_update(data,soa_params,aos_params);
             }
 

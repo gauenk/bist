@@ -2,6 +2,8 @@
 #include "flood_fill.h"
 #include "atomic_helpers.h"
 
+// #include <thrust/device_vector.h>
+// #include <thrust/host_vector.h>
 
 #define THREADS_PER_BLOCK 512
 
@@ -44,10 +46,26 @@ void flood_fill(PointCloudData& data, spix_params* params, uint32_t* spix, uint3
     // -- allocate --
     thrust::device_vector<bool> valid_label(data.V, 0);
     bool* valid_label_ptr = thrust::raw_pointer_cast(valid_label.data());
-    while(thrust::count(valid_label.begin(), valid_label.end(), true)< data.V){
+    uint32_t count = thrust::count(valid_label.begin(), valid_label.end(), true);
+    while(count < data.V){
         // -- propogate seed value to all connected neighbors --
         propogate_seed<<<VertexBlocks,NumThreads>>>(spix,valid_label_ptr,data.csr_edges,data.csr_eptr,data.V);
+        count = thrust::count(valid_label.begin(), valid_label.end(), true);
+        // printf("count: %d\n",count);
     }
+
+    // -- view --
+    // thrust::host_vector<uint32_t> spix_cpu(data.V);
+    // thrust::device_ptr<uint32_t> spix_dev(spix);
+    // thrust::copy(spix_dev, spix_dev + data.V, spix_cpu.begin());
+    // for(int ix = 0; ix < 10; ix++){
+    //     printf("spix[%d] = %d\n",ix,spix_cpu[ix]);
+    // }
+    // for(int ix = data.V-10; ix < data.V; ix++){
+    //     printf("spix[%d] = %d\n",ix,spix_cpu[ix]);
+    // }
+
+
 
 }
 

@@ -99,6 +99,9 @@ void mark_active_init(spix_params* sp_params, uint32_t* spix, uint8_t* vbids, ui
 
 SuperpixelParams3d run_bass3d(PointCloudData& data, SpixMetaData& args, Logger* logger){
 
+    gpuErrchk( cudaPeekAtLastError() );
+    gpuErrchk( cudaDeviceSynchronize() );
+
     // -- init spix --
     SuperpixelParams3d params(data.V,data.B);
 
@@ -108,6 +111,9 @@ SuperpixelParams3d run_bass3d(PointCloudData& data, SpixMetaData& args, Logger* 
     params.comp_csum_nspix();
     cudaDeviceSynchronize();
     cudaFree(init_nspix);
+
+    gpuErrchk( cudaPeekAtLastError() );
+    gpuErrchk( cudaDeviceSynchronize() );
 
     // -- allocate memory --
     int nspix_sum = params.comp_nspix_sum();
@@ -122,11 +128,18 @@ SuperpixelParams3d run_bass3d(PointCloudData& data, SpixMetaData& args, Logger* 
     // -- init sp_params --
     mark_active_init(sp_params,params.spix_ptr(),data.bids,params.csum_nspix_ptr(),data.V);
 
+    gpuErrchk( cudaPeekAtLastError() );
+    gpuErrchk( cudaDeviceSynchronize() );
+
+
     // -- ensure clusters are contiguous --
     update_params(sp_params,sp_helper,data,params,args,logger);
     flood_fill(data,sp_params,params.spix_ptr(),params.csum_nspix_ptr(),nspix_sum);
 
-  
+    gpuErrchk( cudaPeekAtLastError() );
+    gpuErrchk( cudaDeviceSynchronize() );
+
+
     // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
     //
     //                 Run BASS 3D

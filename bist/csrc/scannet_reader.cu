@@ -149,6 +149,7 @@ read_scene(const std::vector<std::filesystem::path>& scene_files){
 
 }
 
+
 // -- write each scene; [nnodes == spix if point-cloud is the superpixel point cloud] --
 bool write_spix(const std::vector<std::filesystem::path>& scene_files, 
                 const std::filesystem::path& output_root, SuperpixelParams3d& spix_params){
@@ -250,7 +251,7 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
 
         // -- write original data (for dev) --
         ScanNetScene scene;
-        if(!scene.write_ply(scene_file,output_root,ftrs_b,pos_b,edges_b,nnodes,nedges,gcolor_b,labels_b)){
+        if(!scene.write_ply_with_fn(scene_file,output_root,ftrs_b,pos_b,edges_b,nnodes,nedges,gcolor_b,labels_b)){
             exit(1);
         }
 
@@ -311,19 +312,27 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
     std::cout << ply_file << std::endl;
 
     // -- read the axis alignment matrix --
-    std::ifstream info_stream(info_file);
     float axis_align[16];
-    while (std::getline(info_stream, line)) {
-        if (line.rfind("axisAlignment", 0) == 0) { // starts with "axisAlignment"
-            std::istringstream iss(line.substr(line.find('=') + 1));
-            for (int i = 0; i < 16; i++) {
-                if (!(iss >> axis_align[i])) {
-                    std::cerr << "Error parsing axisAlignment\n";
-                    return 1;
+    for (int index = 0; index < 16; index++) {
+        int i = index / 4;
+        int j = index % 4;
+        axis_align[index] = 1.0 * (i==j);
+    }
+    if (std::filesystem::exists(info_file)){
+        std::ifstream info_stream(info_file);
+        while (std::getline(info_stream, line)) {
+            if (line.rfind("axisAlignment", 0) == 0) { // starts with "axisAlignment"
+                std::istringstream iss(line.substr(line.find('=') + 1));
+                for (int i = 0; i < 16; i++) {
+                    if (!(iss >> axis_align[i])) {
+                        std::cerr << "Error parsing axisAlignment\n";
+                        return 1;
+                    }
                 }
+                break;
             }
-            break;
         }
+        info_stream.close();
     }
 
     // // Print result to verify
@@ -488,7 +497,7 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
     return true;
 };
 
-bool ScanNetScene::write_ply(const std::filesystem::path& scene_path, 
+bool ScanNetScene::write_ply_with_fn(const std::filesystem::path& scene_path, 
                             const std::filesystem::path& output_root,
                             float* ftrs, float* pos, uint32_t* edges, 
                             int nnodes, int nedges, uint8_t* gcolors, uint32_t* labels) {
@@ -506,7 +515,14 @@ bool ScanNetScene::write_ply(const std::filesystem::path& scene_path,
     // -- get filenames --
     std::filesystem::path ply_file = write_path / (scene_name + "_vh_clean_2.ply");
     std::cout << ply_file << std::endl;
-    
+    return write_ply(ply_file,ftrs,pos,edges,nnodes,nedges,gcolors,labels);
+}
+
+
+bool ScanNetScene::write_ply(const std::filesystem::path& ply_file, 
+                            float* ftrs, float* pos, uint32_t* edges, 
+                            int nnodes, int nedges, uint8_t* gcolors, uint32_t* labels) {
+
     // -- delete existing file if it exists --
     if (std::filesystem::exists(ply_file)) {
         std::filesystem::remove(ply_file);
@@ -531,7 +547,9 @@ bool ScanNetScene::write_ply(const std::filesystem::path& scene_path,
     header += "property uchar green\n";
     header += "property uchar blue\n";
     header += "property uchar alpha\n";
-    header += "property uchar gcolor\n";
+    if (gcolors != nullptr){
+        header += "property uchar gcolor\n";
+    }
     if (labels != nullptr) {
         header += "property uint label\n";
     }
@@ -557,8 +575,8 @@ bool ScanNetScene::write_ply(const std::filesystem::path& scene_path,
         r = static_cast<unsigned char>(ftrs[3*i+0] * 255.0f);
         g = static_cast<unsigned char>(ftrs[3*i+1] * 255.0f);
         b = static_cast<unsigned char>(ftrs[3*i+2] * 255.0f);
-        gcolor_id = gcolors[i];
         alpha = 255;
+        gcolor_id = (gcolors != nullptr) ? gcolors[i] : 0;
         label = (labels != nullptr) ? static_cast<uint32_t>(labels[i]) : 0;
         //printf("label: %ld\n",label);
         //printf("x,y,z r,g,b: %2.2f %2.2f %2.2f %2.2f %2.2f %2.2f\n",x,y,z,ftrs[3*i+0],ftrs[3*i+1] ,ftrs[3*i+2] );
@@ -572,7 +590,10 @@ bool ScanNetScene::write_ply(const std::filesystem::path& scene_path,
         file.write(reinterpret_cast<const char*>(&g), sizeof(unsigned char));
         file.write(reinterpret_cast<const char*>(&b), sizeof(unsigned char));
         file.write(reinterpret_cast<const char*>(&alpha), sizeof(unsigned char));
-        file.write(reinterpret_cast<const char*>(&gcolor_id), sizeof(unsigned char));
+        // -- write gcolor if provided --
+        if (gcolors != nullptr) {
+            file.write(reinterpret_cast<const char*>(&gcolor_id), sizeof(unsigned char));
+        }
         // -- write label if provided --
         if (labels != nullptr) {
             file.write(reinterpret_cast<const char*>(&label), sizeof(uint32_t));
@@ -598,6 +619,109 @@ bool ScanNetScene::write_ply(const std::filesystem::path& scene_path,
 };
 
 
+
+
+// bool write_ply_csr_edges(const std::filesystem::path& ply_file,
+//                         float* ftrs, float* pos, uint32_t* csr_edges,  uint32_t* csr_eptr,  
+//                         int V, int E){
+
+//     // -- delete existing file if it exists --
+//     if (std::filesystem::exists(ply_file)) {
+//         std::filesystem::remove(ply_file);
+//     }
+//     bool* gcolors = nullptr;
+//     uint32_t* labels = nullptr;
+
+//     // -- open file for writing --
+//     std::ofstream file(ply_file.string(), std::ios::binary);
+//     if (!file.is_open()) {
+//         std::cerr << "Can not open: " << ply_file.string() << std::endl;
+//         return false;
+//     }
+
+//     // -- write PLY header --
+//     std::string header = "ply\n";
+//     header += "format binary_little_endian 1.0\n";
+//     header += "comment MLIB generated\n";
+//     header += "element vertex " + std::to_string(V) + "\n";
+//     header += "property float x\n";
+//     header += "property float y\n";
+//     header += "property float z\n";
+//     header += "property uchar red\n";
+//     header += "property uchar green\n";
+//     header += "property uchar blue\n";
+//     header += "property uchar alpha\n";
+//     if (gcolors == nullptr){
+//         header += "property uchar gcolor\n";
+//     }
+//     if (labels != nullptr) {
+//         header += "property uint label\n";
+//     }
+//     header += "element edge " + std::to_string(E) + '\n';
+//     header += "property int vertex1\n";
+//     header += "property int vertex2\n";
+//     header += "end_header\n";
+//     file.write(header.c_str(), header.length());
+
+//     // -- write data --
+//     for (int i = 0; i < V; ++i) {
+        
+//         // -- init --
+//         float x, y, z;
+//         unsigned char r, g, b, alpha;
+//         uint32_t label;
+//         uint8_t gcolor_id;
+
+//         // -- unpack --
+//         x = pos[3*i+0];
+//         y = pos[3*i+1];
+//         z = pos[3*i+2];
+//         r = static_cast<unsigned char>(ftrs[3*i+0] * 255.0f);
+//         g = static_cast<unsigned char>(ftrs[3*i+1] * 255.0f);
+//         b = static_cast<unsigned char>(ftrs[3*i+2] * 255.0f);
+//         alpha = 255;
+//         gcolor_id = (gcolors != nullptr) ? gcolors[i] : 0;
+//         label = (labels != nullptr) ? static_cast<uint32_t>(labels[i]) : 0;
+//         //printf("label: %ld\n",label);
+//         //printf("x,y,z r,g,b: %2.2f %2.2f %2.2f %2.2f %2.2f %2.2f\n",x,y,z,ftrs[3*i+0],ftrs[3*i+1] ,ftrs[3*i+2] );
+
+
+//         // -- write --
+//         file.write(reinterpret_cast<const char*>(&x), sizeof(float));
+//         file.write(reinterpret_cast<const char*>(&y), sizeof(float));
+//         file.write(reinterpret_cast<const char*>(&z), sizeof(float));
+//         file.write(reinterpret_cast<const char*>(&r), sizeof(unsigned char));
+//         file.write(reinterpret_cast<const char*>(&g), sizeof(unsigned char));
+//         file.write(reinterpret_cast<const char*>(&b), sizeof(unsigned char));
+//         file.write(reinterpret_cast<const char*>(&alpha), sizeof(unsigned char));
+//         // -- write gcolor if provided --
+//         if (gcolors != nullptr) {
+//             file.write(reinterpret_cast<const char*>(&gcolor_id), sizeof(unsigned char));
+//         }
+//         // -- write label if provided --
+//         if (labels != nullptr) {
+//             file.write(reinterpret_cast<const char*>(&label), sizeof(uint32_t));
+//         }
+
+//     }
+
+//     for (int i = 0; i < E; ++i){
+//         //unsigned char len = 2;
+//         int e0 = edges[2*i+0]; // ??
+//         int e1 = edges[2*i+1];
+
+//         for (int jx = start; jx < end; jx++){
+//             file.write(reinterpret_cast<const char*>(&e0), sizeof(int));
+//             file.write(reinterpret_cast<const char*>(&e1), sizeof(int));
+//         }
+//     }
+    
+//     file.close();
+//     return true;                   
+
+// }
+
+
 bool ScanNetScene::write_spix_ply_with_fn(const std::filesystem::path& scene_path, 
                                   const std::filesystem::path& output_root,
                                   thrust::host_vector<float3>& ftrs, 
@@ -618,10 +742,10 @@ bool ScanNetScene::write_spix_ply_with_fn(const std::filesystem::path& scene_pat
     std::filesystem::path ply_file = write_path / (scene_name + "_spix.ply");
     std::cout << ply_file << std::endl;
     
-    thrust::host_vector<uint32_t> poly(0); // spoof for now.
-    thrust::host_vector<uint32_t> spix_sizes(0); // spoof for now.
-    this->write_spix_ply(ply_file,ftrs,pos,var,cov,poly,spix_sizes,nspix);
-    return true;
+    // thrust::host_vector<uint32_t> border_edges(0); // spoof for now.
+    // thrust::host_vector<uint32_t> border_ptr(0); // spoof for now.
+    return this->write_spix_ply(ply_file,ftrs,pos,var,cov,nspix);
+
 }
 
 
@@ -630,8 +754,8 @@ bool ScanNetScene::write_spix_ply(const std::filesystem::path& ply_file,
                                   thrust::host_vector<double3>& pos,
                                   thrust::host_vector<double3>& var, 
                                   thrust::host_vector<double3>& cov, 
-                                  thrust::host_vector<uint32_t>& poly,
-                                  thrust::host_vector<uint32_t>& spix_sizes_csum,
+                                //   thrust::host_vector<uint32_t>& border_edges,
+                                //   thrust::host_vector<uint32_t>& border_ptr,
                                   int nspix) {
     
     // -- delete existing file if it exists --
@@ -664,10 +788,13 @@ bool ScanNetScene::write_spix_ply(const std::filesystem::path& ply_file,
     header += "property uchar green\n";
     header += "property uchar blue\n";
     header += "property uchar alpha\n";
-    if (poly.size() > 0){
-        header += "element face " + std::to_string(1) + "\n";
-        header += "property list uchar int vertex_indices\n";
-    }
+    // if (border_edges.size() > 0){
+    //     header += "element edge " + std::to_string(border_edges.size()/2) + '\n';
+    //     header += "property int vertex1\n";
+    //     header += "property int vertex2\n";
+    //     // header += "element face " + std::to_string(border_edges.size()/2) + "\n";
+    //     // header += "property list uchar int vertex_indices\n";
+    // }
     header += "end_header\n";
     file.write(header.c_str(), header.length());
 
@@ -718,19 +845,32 @@ bool ScanNetScene::write_spix_ply(const std::filesystem::path& ply_file,
         file.write(reinterpret_cast<const char*>(&alpha), sizeof(unsigned char));
     }
 
-    if (poly.size()>0){
-        for (int i = 0; i < 1; ++i) {
-            int start = spix_sizes_csum[i];
-            int end = spix_sizes_csum[i+1];
-            unsigned char spix_size = end - start;
-            file.write(reinterpret_cast<char*>(&spix_size), sizeof(unsigned char));
-            for (int index=start; index < end; index++){
-                int vertex_id = poly[index];
-                file.write(reinterpret_cast<char*>(&vertex_id), sizeof(int));
-                printf("[%d,%d] %d\n",index,spix_size,vertex_id);
-            }
-        }
-    }
+    // if (border_edges.size()>0){
+    //     // uint32_t nedges = border_edges.size()/2;
+    //     // for (uint32_t i = 0; i < nedges; ++i) {
+    //     //     uint32_t start = border_ptr[i];
+    //     //     uint32_t end = border_ptr[i+1];
+    //     //     unsigned char spix_size = end - start;
+    //     //     file.write(reinterpret_cast<char*>(&spix_size), sizeof(unsigned char));
+    //     //     for (uint32_t index=start; index < end; index++){
+    //     //         uint32_t vertex_id = border_edges[index];
+    //     //         file.write(reinterpret_cast<char*>(&vertex_id), sizeof(int));
+    //     //         printf("[%d,%d] %d\n",index,spix_size,vertex_id);
+    //     //     }
+    //     // }
+    //     uint32_t nedges = border_edges.size()/2;
+    //     for (uint32_t i = 0; i < nedges; ++i){
+    //         uint32_t e0 = border_edges[2*i+0]; // ??
+    //         uint32_t e1 = border_edges[2*i+1];
+    //         if ((i % 10000 == 0) || (i < 10) || (i > (nedges-10))) {        
+    //             printf("e0, e1: %d %d\n",e0,e1);
+    //         }
+    //         //file.write(reinterpret_cast<const char*>(&len), sizeof(unsigned char));
+    //         file.write(reinterpret_cast<const char*>(&e0), sizeof(int));
+    //         file.write(reinterpret_cast<const char*>(&e1), sizeof(int));
+    //     }
+        
+    // }
 
     file.close();
     return true;

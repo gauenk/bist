@@ -112,7 +112,7 @@ get_csr_graph_from_edges(uint32_t* edges, uint8_t* ebids, int* eptr, int* vptr, 
     // -- allocate & fill csr edges --
     int num_csr_edges;
     cudaMemcpy(&num_csr_edges,&csr_eptr[V],sizeof(uint32_t),cudaMemcpyDeviceToHost);
-    printf("num_csr_edges: %d,%d\n",num_csr_edges,E);
+    //printf("num_csr_edges: %d,%d\n",num_csr_edges,E);
     uint32_t* csr_edges = (uint32_t*)easy_allocate((num_csr_edges+1),sizeof(uint32_t));
     fill_csr_edges_kernel<<<grid_size, block_size>>>(edges, ebids, eptr, vptr, csr_edges, csr_eptr, curr_pos, E);
     

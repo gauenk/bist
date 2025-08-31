@@ -22,10 +22,16 @@ struct ScanNetScene {
     
     ScanNetScene();
     bool read_ply(const std::filesystem::path& scene_path);
-    bool write_ply(const std::filesystem::path& scene_path,
+    bool write_ply_with_fn(const std::filesystem::path& scene_path,
                    const std::filesystem::path& output_root,
                    float* ftrs, float* pos, uint32_t* edges, 
                    int nnodes, int nedges, uint8_t* gcolor, uint32_t* labels=nullptr);
+    bool write_ply(const std::filesystem::path& ply_file,
+                    float* ftrs, float* pos, uint32_t* edges, 
+                    int nnodes, int nedges, uint8_t* gcolor=nullptr, uint32_t* labels=nullptr);
+    // bool write_ply_csr_edges(const std::filesystem::path& ply_file,
+    //                 float* ftrs, float* pos, uint32_t* csr_edges,  uint32_t* csr_eptr,  
+    //                 int V, int E);
     bool write_spix_ply_with_fn(const std::filesystem::path& scene_path, 
                         const std::filesystem::path& output_root,
                         thrust::host_vector<float3>& ftrs, 
@@ -38,8 +44,6 @@ struct ScanNetScene {
                         thrust::host_vector<double3>& pos,
                         thrust::host_vector<double3>& var, 
                         thrust::host_vector<double3>& cov,
-                        thrust::host_vector<uint32_t>& poly,
-                        thrust::host_vector<uint32_t>& spix_sizes,
                         int nspix);
 };
 

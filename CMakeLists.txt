@@ -75,6 +75,7 @@ set(SHARED_SOURCES_3D
   bist/csrc/update_seg_3d.cu
   bist/csrc/articulation_points.cu
   bist/csrc/poly_from_points.cu
+  bist/csrc/border_edges.cu
   bist/csrc/logger_3d.cu
 )
 

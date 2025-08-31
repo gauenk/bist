@@ -248,8 +248,8 @@ int main(int argc, char **argv) {
             
             Logger* logger = nullptr;
             // -- run segmentation --
-            PointCloudData data{ftrs, pos, gcolors, csr_edges, bids, 
-                                vptr, csr_eptr, dim_sizes, gchrome, 
+            PointCloudData data{ftrs, pos, gcolors, csr_edges, csr_eptr, 
+                                bids, vptr, eptr, dim_sizes, gchrome, 
                                 scene_files_b.size(), V_total, E_total};
             if (logging==1){
                 logger = new Logger(output_root,scene_files_b);
