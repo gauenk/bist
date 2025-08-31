@@ -70,6 +70,7 @@ __host__ void update_seg(spix_params* aos_params, spix_helper* sp_helper, PointC
             approximate_articulation_points<<<ArtNumBlocks,ArtNumThreads>>>(spix,data.csr_edges,data.csr_eptr,is_simple_point,neigh_neq,data.V);
             // gpuErrchk( cudaPeekAtLastError() );
             // gpuErrchk( cudaDeviceSynchronize() );
+            // printf("step.\n");
 
             update_seg_subset<<<VertexBlocks,NumThreads>>>(aos_params,spix,border,is_simple_point,
                                                           data.ftrs,data.pos,neigh_neq,

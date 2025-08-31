@@ -174,7 +174,9 @@ __global__ void approximate_articulation_points(
             uint32_t l1 = shared_labels[warp_in_block][i];
             uint32_t l2 = shared_labels[warp_in_block][j];
 
-            
+            // Skip if either label isn't in the same cluster;
+            // if ((l1 != my_label) || (l2 != my_label)){ continue; }
+
             // Check 2-hop connectivity
             bool connected;
             if ((l1 == my_label) && (l2 == my_label)){
@@ -183,9 +185,10 @@ __global__ void approximate_articulation_points(
                     csr_edges, csr_ptr,
                     shared_neighbors[warp_in_block], 
                     num_neighbors);
-            }else{
-                connected = false;
             }
+            // }else{
+            //     connected = false;
+            // }
             
             if (!connected) {
                 thread_found_disconnection = true;
