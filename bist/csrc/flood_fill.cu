@@ -32,10 +32,10 @@ void flood_fill(PointCloudData& data, spix_params* params, uint32_t* spix, uint3
     thrust::fill(distances.begin(), distances.end(), init_packed);
 
     // -- find min sizes --
-    find_clostest_point<<<VertexBlocks,NumThreads>>>(distances_ptr,data.pos,params,spix,csum_nspix,data.bids,data.V);
+    find_clostest_point<<<VertexBlocks,NumThreads>>>(distances_ptr,data.pos_ptr(),params,spix,csum_nspix,data.vertex_batch_ids_ptr(),data.V);
 
     // -- keep one point in each spix that is closest --
-    set_only_seeds<<<VertexBlocks,NumThreads>>>(distances_ptr,spix,csum_nspix,data.bids,data.V);
+    set_only_seeds<<<VertexBlocks,NumThreads>>>(distances_ptr,spix,csum_nspix,data.vertex_batch_ids_ptr(),data.V);
 
     //
     // Step 2: Expansion Loop
@@ -49,7 +49,7 @@ void flood_fill(PointCloudData& data, spix_params* params, uint32_t* spix, uint3
     uint32_t count = thrust::count(valid_label.begin(), valid_label.end(), true);
     while(count < data.V){
         // -- propogate seed value to all connected neighbors --
-        propogate_seed<<<VertexBlocks,NumThreads>>>(spix,valid_label_ptr,data.csr_edges,data.csr_eptr,data.V);
+        propogate_seed<<<VertexBlocks,NumThreads>>>(spix,valid_label_ptr,data.csr_edges_ptr(),data.csr_eptr_ptr(),data.V);
         count = thrust::count(valid_label.begin(), valid_label.end(), true);
         // printf("count: %d\n",count);
     }

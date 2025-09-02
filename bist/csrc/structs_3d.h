@@ -172,82 +172,484 @@ struct SpixMetaData {
 };
 
 
-struct PointCloudData {
-    // Core data arrays
-    float3* ftrs;           // Features
-    float3* pos;            // Positions
-    uint8_t* gcolors;       // Global colors
-    uint32_t* csr_edges;    // CSR format edges
-    uint32_t* csr_eptr;     // CSR edge pointers
-    uint8_t* bids;          // Batch IDs
-    int* ptr;               // Pointer array
-    int* eptr;              // Pointer to index for batch slicing
-    float* dim_sizes;       // Dimension sizes
+// struct PointCloudData {
+//     // Core data arrays
+//     float3* ftrs;           // Features
+//     float3* pos;            // Positions
+//     uint32_t* faces;        // Faces
+//     uint8_t* gcolors;       // Global colors
+//     uint32_t* csr_edges;    // CSR format edges
+//     uint32_t* csr_eptr;     // CSR edge pointers
+//     uint8_t* bids;          // Batch IDs
+//     int* ptr;               // Pointer array
+//     int* eptr;              // Pointer to index for batch slicing
+//     int* fptr;
+//     float* dim_sizes;       // Dimension sizes
     
+//     // Scalar parameters
+//     uint8_t gchrome;        // Global chrome value
+//     int B; // batchsize
+//     int V; // num vertex
+//     int E; // num unique edges
+//     int F; // num faces
+
+//     // -- get host vectors for file io --
+
+//     thrust::host_vector<float> ftrs_host() {
+//       thrust::host_vector<float> on_cpu(3*this->V);
+//       thrust::device_ptr<float> dev_ptr(reinterpret_cast<float*>(this->ftrs));
+//       thrust::copy(dev_ptr, dev_ptr + 3*this->V, on_cpu.begin());
+//       return on_cpu;
+//     }
+
+//     thrust::host_vector<float> pos_host() {
+//       thrust::host_vector<float> on_cpu(3*this->V);
+//       thrust::device_ptr<float> dev_ptr(reinterpret_cast<float*>(this->pos));
+//       thrust::copy(dev_ptr, dev_ptr + 3*this->V, on_cpu.begin());
+//       return on_cpu;
+//     }
+
+//     thrust::host_vector<uint8_t> gcolors_host() {
+//       thrust::host_vector<uint8_t> on_cpu(this->V);
+//       thrust::device_ptr<uint8_t> dev_ptr(this->gcolors);
+//       thrust::copy(dev_ptr, dev_ptr + this->V, on_cpu.begin());
+//       return on_cpu;
+//     }
+
+//     thrust::host_vector<int> vptr_host() {
+//       thrust::host_vector<int> on_cpu(this->B+1);
+//       thrust::device_ptr<int> dev_ptr(this->ptr);
+//       thrust::copy(dev_ptr, dev_ptr + this->B+1, on_cpu.begin());
+//       return on_cpu;
+//     }
+
+
+
+//     //  PointCloudData data{ftrs, pos, gcolors, csr_edges, csr_eptr, 
+//     //                     bids, vptr, eptr, dim_sizes, gchrome, 
+//     //                     scene_files_b.size(), V_total, E_total};
+//     // if (logging==1){
+
+//     // Constructor
+//     PointCloudData(float3* ftrs, float3* pos, uint8_t* gcolors,
+//                    uint32_t* csr_edges, uint32_t* csr_eptr, 
+//                    uint8_t* bids, int* ptr, int* eptr, float* dim_sizes,
+//                    uint32_t* faces, int* fptr,
+//                    uint8_t gchrome, int B, int V, int E, int F)
+//         : ftrs(ftrs)
+//         , pos(pos)
+//         , gcolors(gcolors)
+//         , csr_edges(csr_edges)
+//         , csr_eptr(csr_eptr)
+//         , bids(bids)
+//         , ptr(ptr)
+//         , eptr(eptr)
+//         , dim_sizes(dim_sizes)
+//         , faces(faces)
+//         , fptr(fptr)
+//         , gchrome(gchrome)
+//         , B(B)
+//         , V(V)
+//         , E(E)
+//         , F(F)
+//     {
+//     }
+// };
+
+
+
+
+struct PointCloudData {
+    // Core data arrays as device_vectors
+    thrust::device_vector<float3> ftrs;
+    thrust::device_vector<float3> pos;
+    thrust::device_vector<uint32_t> faces;
+    thrust::device_vector<uint32_t> edges;
+    thrust::device_vector<uint32_t> csr_edges;
+    thrust::device_vector<uint32_t> csr_eptr;
+    thrust::device_vector<uint8_t> gcolors;
+    thrust::device_vector<uint8_t> vertex_batch_ids;
+    thrust::device_vector<uint8_t> edge_batch_ids;
+    thrust::device_vector<int> vptr;
+    thrust::device_vector<int> eptr;
+    thrust::device_vector<int> fptr;
+    thrust::device_vector<float> bounding_boxes;
+    thrust::device_vector<uint32_t> labels;
+   
     // Scalar parameters
-    uint8_t gchrome;        // Global chrome value
-    int B;
-    int V;
-    int E;
+    uint8_t gchrome;
+    uint32_t B, V, E, F;
+   
+    // Helper methods to get raw pointers when needed
+    float3* ftrs_ptr() { return thrust::raw_pointer_cast(ftrs.data()); }
+    float3* pos_ptr() { return thrust::raw_pointer_cast(pos.data()); }
+    uint32_t* faces_ptr() { return thrust::raw_pointer_cast(faces.data()); }
+    uint32_t* edges_ptr() { return thrust::raw_pointer_cast(edges.data()); }
+    uint32_t* csr_edges_ptr() { return thrust::raw_pointer_cast(csr_edges.data()); }
+    uint32_t* csr_eptr_ptr() { return thrust::raw_pointer_cast(csr_eptr.data()); }
+    uint8_t* gcolors_ptr() { return thrust::raw_pointer_cast(gcolors.data()); }
+    uint8_t* vertex_batch_ids_ptr() { return thrust::raw_pointer_cast(vertex_batch_ids.data()); }
+    uint8_t* edge_batch_ids_ptr() { return thrust::raw_pointer_cast(edge_batch_ids.data()); }
+    int* vptr_ptr() { return thrust::raw_pointer_cast(vptr.data()); }
+    int* eptr_ptr() { return thrust::raw_pointer_cast(eptr.data()); }
+    int* fptr_ptr() { return thrust::raw_pointer_cast(fptr.data()); }
+    float* bounding_boxes_ptr() { return thrust::raw_pointer_cast(bounding_boxes.data()); }
+   
+    // Host vector methods for data transfer
+    thrust::host_vector<float3> ftrs_host() const {
+        thrust::host_vector<float3> result(V);
+        thrust::copy(ftrs.begin(), ftrs.end(),
+                    reinterpret_cast<float3*>(result.data()));
+        return result;
+    }
+    
+    thrust::host_vector<float3> pos_host() const {
+        thrust::host_vector<float3> result(V);
+        thrust::copy(pos.begin(), pos.end(),
+                    reinterpret_cast<float3*>(result.data()));
+        return result;
+    }
+    
+    thrust::host_vector<uint32_t> faces_host() const {
+        thrust::host_vector<uint32_t> result(faces.size());
+        thrust::copy(faces.begin(), faces.end(), result.begin());
+        return result;
+    }
+    
+    thrust::host_vector<uint32_t> edges_host() const {
+        thrust::host_vector<uint32_t> result(edges.size());
+        thrust::copy(edges.begin(), edges.end(), result.begin());
+        return result;
+    }  
 
-    // -- get host vectors for file io --
-
-    thrust::host_vector<float> ftrs_host() {
-      thrust::host_vector<float> on_cpu(3*this->V);
-      thrust::device_ptr<float> dev_ptr(reinterpret_cast<float*>(this->ftrs));
-      thrust::copy(dev_ptr, dev_ptr + 3*this->V, on_cpu.begin());
-      return on_cpu;
+    thrust::host_vector<uint32_t> csr_edges_host() const {
+        thrust::host_vector<uint32_t> result(csr_edges.size());
+        thrust::copy(csr_edges.begin(), csr_edges.end(), result.begin());
+        return result;
+    }
+    
+    thrust::host_vector<uint32_t> csr_eptr_host() const {
+        thrust::host_vector<uint32_t> result(csr_eptr.size());
+        thrust::copy(csr_eptr.begin(), csr_eptr.end(), result.begin());
+        return result;
+    }
+    
+    thrust::host_vector<uint8_t> gcolors_host() const {
+        thrust::host_vector<uint8_t> result(gcolors.size());
+        thrust::copy(gcolors.begin(), gcolors.end(), result.begin());
+        return result;
     }
 
-    thrust::host_vector<float> pos_host() {
-      thrust::host_vector<float> on_cpu(3*this->V);
-      thrust::device_ptr<float> dev_ptr(reinterpret_cast<float*>(this->pos));
-      thrust::copy(dev_ptr, dev_ptr + 3*this->V, on_cpu.begin());
-      return on_cpu;
+    thrust::host_vector<uint8_t> vertex_batch_ids_host() const {
+        thrust::host_vector<uint8_t> result(vertex_batch_ids.size());
+        thrust::copy(vertex_batch_ids.begin(), vertex_batch_ids.end(), result.begin());
+        return result;
     }
 
-    thrust::host_vector<uint8_t> gcolors_host() {
-      thrust::host_vector<uint8_t> on_cpu(this->V);
-      thrust::device_ptr<uint8_t> dev_ptr(this->gcolors);
-      thrust::copy(dev_ptr, dev_ptr + this->V, on_cpu.begin());
-      return on_cpu;
+    thrust::host_vector<uint8_t> edge_batch_ids_host() const {
+        thrust::host_vector<uint8_t> result(edge_batch_ids.size());
+        thrust::copy(edge_batch_ids.begin(), edge_batch_ids.end(), result.begin());
+        return result;
+    }
+    
+    thrust::host_vector<int> vptr_host() const {
+        thrust::host_vector<int> result(vptr.size());
+        thrust::copy(vptr.begin(), vptr.end(), result.begin());
+        return result;
+    }
+    
+    thrust::host_vector<int> eptr_host() const {
+        thrust::host_vector<int> result(eptr.size());
+        thrust::copy(eptr.begin(), eptr.end(), result.begin());
+        return result;
+    }
+    
+    thrust::host_vector<int> fptr_host() const {
+        thrust::host_vector<int> result(fptr.size());
+        thrust::copy(fptr.begin(), fptr.end(), result.begin());
+        return result;
+    }
+    
+    thrust::host_vector<float> bounding_boxes_host() const {
+        thrust::host_vector<float> result(bounding_boxes.size());
+        thrust::copy(bounding_boxes.begin(), bounding_boxes.end(), result.begin());
+        return result;
     }
 
-    thrust::host_vector<int> vptr_host() {
-      thrust::host_vector<int> on_cpu(this->B+1);
-      thrust::device_ptr<int> dev_ptr(this->ptr);
-      thrust::copy(dev_ptr, dev_ptr + this->B+1, on_cpu.begin());
-      return on_cpu;
-    }
+  // Copy constructor
+  PointCloudData(const PointCloudData& other)
+      : ftrs(other.ftrs)
+      , pos(other.pos)
+      , faces(other.faces)
+      , edges(other.edges)
+      , csr_edges(other.csr_edges)
+      , csr_eptr(other.csr_eptr)
+      , gcolors(other.gcolors)
+      , vertex_batch_ids(other.vertex_batch_ids)
+      , edge_batch_ids(other.edge_batch_ids)
+      , vptr(other.vptr)
+      , eptr(other.eptr)
+      , fptr(other.fptr)
+      , bounding_boxes(other.bounding_boxes)
+      , labels(other.labels)
+      , gchrome(other.gchrome)
+      , B(other.B), V(other.V), E(other.E), F(other.F)
+  {}
 
+  PointCloudData copy() const {
+    return PointCloudData(*this);
+  }
 
+  PointCloudData(const std::vector<float3>& ftrs_h,
+                const std::vector<float3>& pos_h,
+                const std::vector<uint32_t>& faces_h,
+                const thrust::device_vector<uint32_t>& edges_h,
+                const std::vector<uint8_t>& vertex_batch_ids_h,
+                const std::vector<uint8_t>& edge_batch_ids_h,
+                const std::vector<int>& vptr_h,
+                const std::vector<int>& eptr_h,
+                const std::vector<int>& fptr_h,
+                const std::vector<float>& bounding_boxes_h,
+                uint8_t gchrome, int B, int V, int E, int F)
+      : ftrs(ftrs_h.begin(), ftrs_h.end())
+      , pos(pos_h.begin(), pos_h.end())
+      , faces(faces_h.begin(), faces_h.end())
+      , edges(edges_h)
+      , vertex_batch_ids(vertex_batch_ids_h.begin(), vertex_batch_ids_h.end())
+      , edge_batch_ids(edge_batch_ids_h.begin(), edge_batch_ids_h.end())
+      , vptr(vptr_h.begin(), vptr_h.end())
+      , eptr(eptr_h.begin(), eptr_h.end())
+      , fptr(fptr_h.begin(), fptr_h.end())
+      , bounding_boxes(bounding_boxes_h.begin(), bounding_boxes_h.end())
+      , gchrome(gchrome)
+      , B(B), V(V), E(E), F(F)
+  {}
 
-    //  PointCloudData data{ftrs, pos, gcolors, csr_edges, csr_eptr, 
-    //                     bids, vptr, eptr, dim_sizes, gchrome, 
-    //                     scene_files_b.size(), V_total, E_total};
-    // if (logging==1){
-
-    // Constructor
-    PointCloudData(float3* ftrs, float3* pos, uint8_t* gcolors,
-                   uint32_t* csr_edges, uint32_t* csr_eptr, 
-                   uint8_t* bids, int* ptr, int* eptr, float* dim_sizes, 
-                   uint8_t gchrome, int B, int V, int E)
-        : ftrs(ftrs)
-        , pos(pos)
-        , gcolors(gcolors)
-        , csr_edges(csr_edges)
-        , csr_eptr(csr_eptr)
-        , bids(bids)
-        , ptr(ptr)
-        , eptr(eptr)
-        , dim_sizes(dim_sizes)
-        , gchrome(gchrome)
-        , B(B)
-        , V(V)
-        , E(E)
-    {
-    }
 };
+
+
+
+
+struct PointCloudDataHost {
+    // Host data arrays
+    std::vector<float3> ftrs;
+    std::vector<float3> pos;
+    std::vector<uint32_t> faces;
+    std::vector<uint32_t> edges;
+    std::vector<uint32_t> csr_edges;
+    std::vector<uint32_t> csr_eptr;
+    std::vector<uint8_t> gcolors;
+    std::vector<uint8_t> vertex_batch_ids;
+    std::vector<uint8_t> edge_batch_ids;
+    std::vector<float> bounding_boxes;
+    std::vector<uint32_t> labels;
+    
+    // Scalar parameters for this batch
+    uint8_t gchrome;
+    int V, E, F;  // sizes for this specific batch
+    
+    // Constructor that extracts a single batch from device data
+    PointCloudDataHost(const PointCloudData& device_data, int batch_idx) {
+        // Validate batch index
+        if (batch_idx < 0 || batch_idx >= device_data.B) {
+            throw std::invalid_argument("Invalid batch index");
+        }
+        
+        // Copy scalar data
+        gchrome = device_data.gchrome;
+        
+        // Get batch boundaries
+        thrust::host_vector<int> vptr_host = device_data.vptr_host();
+        thrust::host_vector<int> eptr_host = device_data.eptr_host();
+        thrust::host_vector<int> fptr_host = device_data.fptr_host();
+        
+        int v_start = vptr_host[batch_idx];
+        int v_end = vptr_host[batch_idx + 1];
+        int e_start = eptr_host[batch_idx];
+        int e_end = eptr_host[batch_idx + 1];
+        int f_start = fptr_host[batch_idx];
+        int f_end = fptr_host[batch_idx + 1];
+        
+        // Set batch sizes
+        V = v_end - v_start;
+        E = e_end - e_start;
+        F = f_end - f_start;
+        
+        // Extract vertex data
+        if (V > 0) {
+            ftrs.resize(V);
+            pos.resize(V);
+            
+            thrust::copy(device_data.ftrs.begin() + v_start,
+                        device_data.ftrs.begin() + v_end,
+                        reinterpret_cast<float3*>(ftrs.data()));
+                        
+            thrust::copy(device_data.pos.begin() + v_start,
+                        device_data.pos.begin() + v_end,
+                        reinterpret_cast<float3*>(pos.data()));
+            
+            // Extract vertex batch IDs if they exist
+            if (!device_data.vertex_batch_ids.empty()) {
+                vertex_batch_ids.resize(V);
+                thrust::copy(device_data.vertex_batch_ids.begin() + v_start,
+                           device_data.vertex_batch_ids.begin() + v_end,
+                           vertex_batch_ids.begin());
+            }
+            
+            // Extract colors if they exist
+            if (!device_data.gcolors.empty()) {
+                gcolors.resize(V);
+                thrust::copy(device_data.gcolors.begin() + v_start,
+                           device_data.gcolors.begin() + v_end,
+                           gcolors.begin());
+            }
+            
+            // Extract labels if they exist
+            if (!device_data.labels.empty()) {
+                labels.resize(V);
+                thrust::copy(device_data.labels.begin() + v_start,
+                           device_data.labels.begin() + v_end,
+                           labels.begin());
+            }
+        }
+        
+        // Extract edge data
+        if (E > 0) {
+            edges.resize(2*E);
+            thrust::copy(device_data.edges.begin() + 2*e_start,
+                        device_data.edges.begin() + 2*e_end,
+                        edges.begin());
+            
+            // Extract edge batch IDs if they exist
+            if (!device_data.edge_batch_ids.empty()) {
+                edge_batch_ids.resize(E);
+                thrust::copy(device_data.edge_batch_ids.begin() + e_start,
+                           device_data.edge_batch_ids.begin() + e_end,
+                           edge_batch_ids.begin());
+            }
+        }
+        
+        // Extract face data
+        if (F > 0) {
+            faces.resize(F);
+            thrust::copy(device_data.faces.begin() + f_start,
+                        device_data.faces.begin() + f_end,
+                        faces.begin());
+        }
+        
+        // Extract CSR edges if they exist
+        if (!device_data.csr_edges.empty()) {
+            // For CSR format, we need to be more careful about extracting the right portion
+            // This is a simplified extraction - you might need to adjust based on your CSR structure
+            csr_edges.resize(E);
+            thrust::copy(device_data.csr_edges.begin() + e_start,
+                        device_data.csr_edges.begin() + e_end,
+                        csr_edges.begin());
+        }
+        
+        // Extract CSR edge pointers if they exist
+        if (!device_data.csr_eptr.empty()) {
+            csr_eptr.resize(V + 1);
+            thrust::copy(device_data.csr_eptr.begin() + v_start,
+                        device_data.csr_eptr.begin() + v_end + 1,
+                        csr_eptr.begin());
+        }
+        
+        // Extract bounding boxes if they exist (assuming 6 floats per batch: min_x, min_y, min_z, max_x, max_y, max_z)
+        if (!device_data.bounding_boxes.empty()) {
+            int bb_start = batch_idx * 6;
+            int bb_end = bb_start + 6;
+            bounding_boxes.resize(6);
+            thrust::copy(device_data.bounding_boxes.begin() + bb_start,
+                        device_data.bounding_boxes.begin() + bb_end,
+                        bounding_boxes.begin());
+        }
+    }
+    
+    // Default constructor
+    PointCloudDataHost() : gchrome(0), V(0), E(0), F(0) {}
+};
+
+
+  //   PointCloudData(const thrust::host_vector<float3>& ftrs_h,
+  //               const thrust::host_vector<float3>& pos_h,
+  //               const thrust::host_vector<uint32_t>& faces_h,
+  //               const thrust::host_vector<uint32_t>& edges_h,
+  //               // const thrust::host_vector<uint32_t>& csr_edges_h,
+  //               // const thrust::host_vector<uint32_t>& csr_eptr_h,
+  //               // const thrust::host_vector<uint8_t>& gcolors_h,
+  //               const thrust::host_vector<uint8_t>& bids_h,
+  //               const thrust::host_vector<int>& ptr_h,
+  //               const thrust::host_vector<int>& eptr_h,
+  //               const thrust::host_vector<int>& fptr_h,
+  //               const thrust::host_vector<float>& dim_sizes_h,
+  //               uint8_t gchrome, int B, int V, int E, int F)
+  //     : ftrs(ftrs_h.begin(), ftrs_h.end())
+  //     , pos(pos_h.begin(), pos_h.end())
+  //     , faces(faces_h.begin(), faces_h.end())
+  //     , edges(edges_h.begin(), edges_h.end())
+  //     // , csr_edges(csr_edges_h.begin(), csr_edges_h.end())
+  //     // , csr_eptr(csr_eptr_h.begin(), csr_eptr_h.end())
+  //     // , gcolors(gcolors_h.begin(), gcolors_h.end())
+  //     , bids(bids_h.begin(), bids_h.end())
+  //     , ptr(ptr_h.begin(), ptr_h.end())
+  //     , eptr(eptr_h.begin(), eptr_h.end())
+  //     , fptr(fptr_h.begin(), fptr_h.end())
+  //     , dim_sizes(dim_sizes_h.begin(), dim_sizes_h.end())
+  //     , gchrome(gchrome)
+  //     , B(B), V(V), E(E), F(F)
+  // {}
+
+// };
+
+// struct PointCloudData {
+//     // Core data arrays as device_vectors
+//     thrust::device_vector<float3> ftrs;
+//     thrust::device_vector<float3> pos;
+//     thrust::device_vector<uint32_t> faces;
+//     thrust::device_vector<uint8_t> gcolors;
+//     thrust::device_vector<uint32_t> csr_edges;
+//     thrust::device_vector<uint32_t> csr_eptr;
+//     thrust::device_vector<uint8_t> bids;
+//     thrust::device_vector<int> ptr;
+//     thrust::device_vector<int> eptr;
+//     thrust::device_vector<int> fptr;
+//     thrust::device_vector<float> dim_sizes;
+    
+//     // Scalar parameters
+//     uint8_t gchrome;
+//     int B, V, E, F;
+    
+//     // Helper methods to get raw pointers when needed
+//     float3* ftrs_ptr() { return thrust::raw_pointer_cast(ftrs.data()); }
+//     float3* pos_ptr() { return thrust::raw_pointer_cast(pos.data()); }
+//     uint8_t* gcolors_ptr() { return thrust::raw_pointer_cast(gcolors.data()); }
+//     // ... other pointer getters
+    
+//     // Host vector methods become much simpler
+//     thrust::host_vector<float> ftrs_host() {
+//         thrust::host_vector<float> result(3 * V);
+//         thrust::copy(ftrs.begin(), ftrs.end(), 
+//                     reinterpret_cast<float*>(result.data()));
+//         return result;
+//     }
+    
+//     // Constructor
+//     PointCloudData(thrust::device_vector<float3>&& ftrs,
+//                    thrust::device_vector<float3>&& pos,
+//                    thrust::device_vector<uint8_t>&& gcolors,
+//                    // ... other vectors
+//                    uint8_t gchrome, int B, int V, int E, int F)
+//         : ftrs(std::move(ftrs))
+//         , pos(std::move(pos))
+//         , gcolors(std::move(gcolors))
+//         // ... move other vectors
+//         , gchrome(gchrome)
+//         , B(B), V(V), E(E), F(F)
+//     {
+//     }
+// };
+
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)

@@ -187,39 +187,55 @@ int main(int argc, char **argv) {
             int bsize = e_index - s_index;
             std::vector<std::filesystem::path> scene_files_b(scene_files.begin() + s_index, scene_files.begin() + e_index);
             auto read_out = read_scene(scene_files_b);
-            float3* ftrs = std::get<0>(read_out);
-            float3* pos = std::get<1>(read_out);
-            uint32_t* edges = std::get<2>(read_out);
-            uint8_t* bids = std::get<3>(read_out);
-            uint8_t* ebids = std::get<4>(read_out);
-            int* vptr = std::get<5>(read_out);
-            int* eptr = std::get<6>(read_out);
-            float* dim_sizes = std::get<7>(read_out);
+            PointCloudData data  = read_scene(scene_files_b);
+
+            auto ftrs = data.ftrs_host();
+            for (int ix = 0; ix< 10; ix++){
+                printf("ftrs: %2.2f %2.2f %2.2f\n",ftrs[ix].x,ftrs[ix].y,ftrs[ix].z);
+            }
+            // float3* ftrs = std::get<0>(read_out);
+            // float3* pos = std::get<1>(read_out);
+            // uint32_t* edges = std::get<2>(read_out);
+            // uint8_t* bids = std::get<3>(read_out);
+            // uint8_t* ebids = std::get<4>(read_out);
+            // int* vptr = std::get<5>(read_out);
+            // int* eptr = std::get<6>(read_out);
+            // float* dim_sizes = std::get<7>(read_out);
+            // uint32_t* faces = std::get<8>(read_out);
+            // int* fptr = std::get<9>(read_out);
             int nbatch_b = scene_files_b.size();
             cudaDeviceSynchronize();
 
             // -- some reading; idk why not just return it by whatever --
-            int V_total;
-            cudaMemcpy(&V_total,&vptr[nbatch_b],sizeof(int),cudaMemcpyDeviceToHost);
-            int E_total;
-            cudaMemcpy(&E_total,&eptr[nbatch_b],sizeof(int),cudaMemcpyDeviceToHost);
-            printf("V_total E_total : %d %d\n",V_total,E_total);
+            // int V_total;
+            // cudaMemcpy(&V_total,&vptr[nbatch_b],sizeof(int),cudaMemcpyDeviceToHost);
+            // int E_total;
+            // cudaMemcpy(&E_total,&eptr[nbatch_b],sizeof(int),cudaMemcpyDeviceToHost);
+            // int F_total;
+            // cudaMemcpy(&F_total,&fptr[nbatch_b],sizeof(int),cudaMemcpyDeviceToHost);
+            // printf("V_total E_total, F_total : %d %d %d\n",V_total,E_total,F_total);
 
-            // -- convert to csr --
-            uint32_t* csr_edges;
-            uint32_t* csr_eptr;
-            std::tie(csr_edges,csr_eptr) = get_csr_graph_from_edges(edges,ebids,eptr,vptr,V_total,E_total);
-            
+            // // -- convert to csr --
+            // uint32_t* csr_edges;
+            // uint32_t* csr_eptr;
+            thrust::device_vector<uint32_t> csr_edges;
+            thrust::device_vector<uint32_t> csr_eptr;
+            std::tie(csr_edges,csr_eptr) = get_csr_graph_from_edges(data.edges_ptr(),data.edge_batch_ids_ptr(),data.eptr_ptr(),data.vptr_ptr(),data.V,data.E);
+            data.csr_edges = std::move(csr_edges);
+            data.csr_eptr = std::move(csr_eptr);
+
             // // -- check csr_edges --
-            // uint32_t* _edges_chk;
-            // int* _eptr_chk;
+            // thrust::device_vector<uint32_t> _edges_chk;
+            // thrust::device_vector<int> _eptr_chk;
             // std::tie(_edges_chk,_eptr_chk) = get_edges_from_csr(csr_edges,csr_eptr,vptr,bids,V_total,nbatch_b);
 
             // -- get graph colors --
-            uint8_t* gcolors;
             uint8_t gchrome;
-            std::tie(gcolors,gchrome) = get_graph_coloring(csr_edges, csr_eptr, V_total);
+            thrust::device_vector<uint8_t> gcolors;
+            std::tie(gcolors,gchrome) = get_graph_coloring(data.csr_edges_ptr(), data.csr_eptr_ptr(), data.V);
             printf("graph chromaticity: %d\n",gchrome);
+            data.gcolors = std::move(gcolors);
+            data.gchrome = gchrome;
 
             // -- update sp_size to control # of spix --
             // if (controlled_nspix){
@@ -227,6 +243,18 @@ int main(int argc, char **argv) {
             //   sp_size = round(sqrt(_sp_size));
             //   sp_size = max(sp_size,5);
             // }
+
+            /**********************************************
+             * 
+             *      Get the Face-Dual Data
+             * 
+             ***********************************************/
+
+            // PointCloudData data{ftrs, pos, gcolors, csr_edges, csr_eptr, 
+            //     bids, vptr, eptr, dim_sizes, faces, fptr, gchrome, 
+            //     scene_files_b.size(), V_total, E_total, F_total};
+            
+
 
             /**********************************************
 
@@ -248,9 +276,9 @@ int main(int argc, char **argv) {
             
             Logger* logger = nullptr;
             // -- run segmentation --
-            PointCloudData data{ftrs, pos, gcolors, csr_edges, csr_eptr, 
-                                bids, vptr, eptr, dim_sizes, gchrome, 
-                                scene_files_b.size(), V_total, E_total};
+            // PointCloudData data{ftrs, pos, gcolors, csr_edges, csr_eptr, 
+            //                     bids, vptr, eptr, dim_sizes, faces, fptr, gchrome, 
+            //                     scene_files_b.size(), V_total, E_total, F_total};
             if (logging==1){
                 logger = new Logger(output_root,scene_files_b);
             }
@@ -357,28 +385,29 @@ int main(int argc, char **argv) {
             // -- write and free --
             // bool succ = write_scene(scene_files_b,output_root,ftrs,pos,edges,vptr,eptr,spix);
             // bool succ = write_scene(scene_files_b,output_root,ftrs,pos,_edges_chk,vptr,_eptr_chk,gcolors,spix);
-            bool succ = write_scene(scene_files_b,output_root,ftrs,pos,edges,vptr,eptr,gcolors,params.spix_ptr());
-            succ = write_spix(scene_files_b,output_root,params);
+            //bool succ = write_scene(scene_files_b,output_root,data.ftrs_ptr(),data.pos_ptr(),data.edges_ptr(),data.vptr_ptr(),data.eptr_ptr(),data.gcolors_ptr(),params.spix_ptr());
+            bool succ = write_scene(scene_files_b,output_root,data);
+            //succ = write_spix(scene_files_b,output_root,params);
             cudaDeviceSynchronize();
 
             // -- free graph coloring --
-            cudaFree(gcolors);
-            cudaFree(csr_edges);
-            cudaFree(csr_eptr);
+            // cudaFree(gcolors);
+            // cudaFree(csr_edges);
+            // cudaFree(csr_eptr);
 
             // -- free dev --
             // cudaFree(_edges_chk);
             // cudaFree(_eptr_chk);
 
             // -- free data --
-            cudaFree(ftrs);
-            cudaFree(pos);
-            cudaFree(edges);
-            cudaFree(bids);
-            cudaFree(ebids);
-            cudaFree(vptr);
-            cudaFree(eptr);
-            cudaFree(dim_sizes);
+            // cudaFree(ftrs);
+            // cudaFree(pos);
+            // cudaFree(edges);
+            // cudaFree(bids);
+            // cudaFree(ebids);
+            // cudaFree(vptr);
+            // cudaFree(eptr);
+            // cudaFree(dim_sizes);
 
         }
         cudaDeviceReset();

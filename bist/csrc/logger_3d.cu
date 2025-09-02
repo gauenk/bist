@@ -49,26 +49,22 @@ Logger::Logger(const std::filesystem::path& _output_root,
 
 
 
-void Logger::boundary_update(PointCloudData& data, SuperpixelParams3d& params, spix_params* sp_params) {
+void Logger::boundary_update(PointCloudData& in_data, SuperpixelParams3d& params, spix_params* sp_params) {
 
     // -- ... --
+    PointCloudData data = in_data.copy();
+    data.labels = params.spix;
     thrust::host_vector<uint32_t> csum_nspix = params.csum_nspix;
     thrust::device_vector<bool> border_cpy = params.border;
     bool* border = thrust::raw_pointer_cast(border_cpy.data());
     cudaMemset(border, 0, data.V*sizeof(bool));
-    set_border(params.spix_ptr(), border, data.csr_edges,data.csr_eptr,data.V);
+    set_border(params.spix_ptr(), border, data.csr_edges_ptr(),data.csr_eptr_ptr(),data.V);
     
     // -- prepare superpixel information --
     aos_to_soa(sp_params, params); // from spix_params -> SuperpixelParams3d
 
-    // -- get host vectors for the point-cloud data too / this helps vizualize edges --
-    auto ftrs = data.ftrs_host();
-    auto pos = data.pos_host();
-    auto vptr = data.vptr_host();
-
-
     //
-    // -- too much work.... explain later... pretty silly...
+    // -- too much work.... explain later... pretty silly... [marked for deletion on 09/02]
     //
 
     // // -- just copy for testing --
@@ -89,36 +85,21 @@ void Logger::boundary_update(PointCloudData& data, SuperpixelParams3d& params, s
     // uint32_t* csr_edges = thrust::raw_pointer_cast(border_edges.data());
     // uint32_t* csr_eptr = thrust::raw_pointer_cast(border_ptr.data());
 
-    uint32_t* edges;
-    int* eptr;
-    std::tie(edges,eptr) = get_edges_from_csr(data.csr_edges,data.csr_eptr,data.ptr,data.bids,data.V,data.B);
+
+    // -- get pairs of edges instead of csr... might just be ".edges,.eptr,.edge_batch_ids"--
 
 
-    // -- copy edges to cpu --
-    // thrust::host_vector<uint32_t> edges_cpu;
-    thrust::host_vector<int> eptr_cpu(data.B+1);
-
-    thrust::device_ptr<int> eptr_dev_ptr(eptr);
-    thrust::copy(eptr_dev_ptr,eptr_dev_ptr+data.B+1,eptr_cpu.begin());
-    int num_edge_pairs_og = eptr_cpu.back();
-
-    // edges_cpu.resize(2*num_edge_pairs);
-    // thrust::device_ptr<uint32_t> edges_dev_ptr(edges);
-    // thrust::copy(edges_dev_ptr,edges_dev_ptr+2*num_edge_pairs,edges_cpu.begin());
-
-    //printf("num_edge_pairs_og: %d\n",num_edge_pairs_og);
-    // -- get polygon for cooleo scene info points --
+    // -- keep only edges along the border for a "B-" viz --
     thrust::device_vector<uint32_t> border_edges;
-    thrust::device_vector<uint32_t> _tmp;
-    std::tie(border_edges,_tmp) = get_border_edges(params.spix_ptr(),border,edges,num_edge_pairs_og);
-    //printf("border_edges.size(): %d\n",border_edges.size());
-    // thrust::host_vector<uint32_t> edges_cpu = border_edges;
-    // get_border_edges(uint32_t* spix, bool* border, uint32_t* edges, uint32_t E);
+    thrust::device_vector<int> border_eptr;
+    thrust::device_vector<uint8_t> border_bids;
+    // std::tie(border_edges,border_eptr,border_bids) = get_border_edges(params.spix_ptr(),border,edges_dptr,ebids_dptr,data.B,data.E);
+    std::tie(border_edges,border_eptr,border_bids) = get_border_edges(params.spix_ptr(),border,data.edges_ptr(),data.edge_batch_ids_ptr(),data.B,data.E);
     int num_edges = border_edges.size()/2;
     thrust::host_vector<uint32_t> edges_cpu = border_edges;
-
-    cudaFree(edges);
-    cudaFree(eptr);
+    data.edges = std::move(border_edges);
+    data.eptr = std::move(border_eptr);
+    data.edge_batch_ids = std::move(border_bids);
 
 
     int bx = 0;
@@ -131,10 +112,6 @@ void Logger::boundary_update(PointCloudData& data, SuperpixelParams3d& params, s
             std::cout << "Creaing output path " + bndy_root.string() << std::endl;
             std::filesystem::create_directories(bndy_root);
         }
-
-        // gpuErrchk( cudaPeekAtLastError() );
-        // gpuErrchk( cudaDeviceSynchronize() );
-
 
         // -- get save filename --
         std::stringstream ss;
@@ -156,29 +133,17 @@ void Logger::boundary_update(PointCloudData& data, SuperpixelParams3d& params, s
 
         // -- write superpixel information --
         ScanNetScene scene;
-        bool tmp = scene.write_spix_ply(ply_file,mu_app,mu_pos,var_pos,cov_pos,nspix);
-
+        //bool tmp = scene.write_spix_ply(ply_file,mu_app,mu_pos,var_pos,cov_pos,nspix);
+        bool tmp;
 
        // -- save boundary edges --
         std::stringstream ss_scene;
         ss_scene << std::setfill('0') << std::setw(5) << bndy_ix << "_edges.ply";  // "%05d.ply" % bndy_ix
         std::filesystem::path scene_fn = bndy_root / ss_scene.str();
 
-        // -- get scene information --
-        thrust::host_vector<float> ftrs_b(ftrs.begin() + 3*vptr[bx], ftrs.begin() + 3*vptr[bx+1]);
-        thrust::host_vector<float> pos_b(pos.begin() + 3*vptr[bx], pos.begin() +  3*vptr[bx+1]);
-        thrust::host_vector<uint32_t> spix_b(params.spix.begin() + vptr[bx], params.spix.begin() +  vptr[bx+1]);
-        thrust::host_vector<uint32_t> edges_b = edges_cpu;//(edges_cpu.begin() + 2*eptr_cpu[bx], edges_cpu.begin() +  2*eptr_cpu[bx+1]);
-        int Vb = vptr[bx+1] - vptr[bx];
-        int Eb = num_edges;//eptr_cpu[bx+1] - eptr_cpu[bx];
-        // printf("border_edges.size(): %d %d\n",border_edges.size(),Eb);
-
-        //-- write --
-        float* ftrs_b_ptr = thrust::raw_pointer_cast(ftrs_b.data());
-        float* pos_b_ptr = thrust::raw_pointer_cast(pos_b.data());
-        uint32_t* spix_b_ptr = thrust::raw_pointer_cast(spix_b.data());
-        uint32_t* edges_b_ptr = thrust::raw_pointer_cast(edges_b.data());
-        tmp = scene.write_ply(scene_fn,ftrs_b_ptr,pos_b_ptr,edges_b_ptr,Vb,Eb);
+        //-- write scene with only edges --
+        PointCloudDataHost host_data(data,bx);
+        scene.write_ply(scene_fn,host_data);
 
         bx++;
 

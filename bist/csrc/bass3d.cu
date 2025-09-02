@@ -56,7 +56,7 @@ __host__ void bass(spix_params* aos_params, spix_helper* sm_helper, PointCloudDa
 
   // -- set one-sided border at end for nicer viz --
   cudaMemset(soa_params.border_ptr(), 0, data.V*sizeof(bool));
-  set_border_end(soa_params.spix_ptr(),soa_params.border_ptr(),data.csr_edges,data.csr_eptr,data.V);
+  set_border_end(soa_params.spix_ptr(),soa_params.border_ptr(),data.csr_edges_ptr(),data.csr_eptr_ptr(),data.V);
 
 }
 
@@ -106,8 +106,8 @@ SuperpixelParams3d run_bass3d(PointCloudData& data, SpixMetaData& args, Logger* 
     SuperpixelParams3d params(data.V,data.B);
 
     // -- init spix & compact  [ sets nspix within params ] --
-    uint32_t* init_nspix = init_seg_3d(params.spix_ptr(), data.pos, data.bids, data.ptr, data.dim_sizes, args.sp_size, data.B, data.V);
-    run_compactify(params.nspix_ptr(), params.spix_ptr(), data.bids, params.prev_nspix_ptr(), init_nspix, data.B, data.V);
+    uint32_t* init_nspix = init_seg_3d(params.spix_ptr(), data.pos_ptr(), data.vertex_batch_ids_ptr(), data.vptr_ptr(), data.bounding_boxes_ptr(), args.sp_size, data.B, data.V);
+    run_compactify(params.nspix_ptr(), params.spix_ptr(), data.vertex_batch_ids_ptr(), params.prev_nspix_ptr(), init_nspix, data.B, data.V);
     params.comp_csum_nspix();
     cudaDeviceSynchronize();
     cudaFree(init_nspix);
@@ -126,7 +126,7 @@ SuperpixelParams3d run_bass3d(PointCloudData& data, SpixMetaData& args, Logger* 
     spix_helper* sp_helper=(spix_helper*)easy_allocate(nspix_max,helper_size);
 
     // -- init sp_params --
-    mark_active_init(sp_params,params.spix_ptr(),data.bids,params.csum_nspix_ptr(),data.V);
+    mark_active_init(sp_params,params.spix_ptr(),data.vertex_batch_ids_ptr(),params.csum_nspix_ptr(),data.V);
 
     gpuErrchk( cudaPeekAtLastError() );
     gpuErrchk( cudaDeviceSynchronize() );

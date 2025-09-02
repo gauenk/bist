@@ -1,14 +1,8 @@
 
 
-#include <cuda_runtime.h>
-#include <device_launch_parameters.h>
-#include <thrust/device_vector.h>
-#include <thrust/fill.h>
-#include <thrust/count.h>
-#include <thrust/extrema.h>
 
-#include <cooperative_groups.h>
-using namespace cooperative_groups;
+// #include <cooperative_groups.h>
+// using namespace cooperative_groups;
 
 #include "init_utils.h"
 #include "graph_coloring.h"
@@ -459,7 +453,7 @@ __global__ void validate_coloring(
 }
 
 // Main Luby's coloring function
-std::tuple<uint8_t*,uint8_t> 
+std::tuple<thrust::device_vector<uint8_t>,uint8_t> 
 get_graph_coloring(
     const uint32_t* edges,  // CSR edge list
     const uint32_t* eptr,       // CSR edge pointers (size V+1)
@@ -472,7 +466,9 @@ get_graph_coloring(
     const uint8_t MAX_COLORS = 32; // Safety limit
 
     // -- allocate --
-    uint8_t* colors = (uint8_t*)easy_allocate(V,sizeof(uint8_t));
+    thrust::device_vector<uint8_t> colors(V,0);
+    uint8_t* colors_dptr = thrust::raw_pointer_cast(colors.data());
+    // uint8_t* colors = (uint8_t*)easy_allocate(V,sizeof(uint8_t));
     //cudaMemset(colors,0x01,V*sizeof(uint8_t));
     const int block_size = 512;
     const int grid_size = (V/V_PER_THREAD + block_size - 1) / block_size;
@@ -494,13 +490,13 @@ get_graph_coloring(
         // Check if any vertices remain uncolored
         int uncolored_count = thrust::count(d_uncolored.begin(), d_uncolored.end(), true);
         if (uncolored_count == 0) break;
-        kernel_step_1<V_PER_THREAD><<<grid_size, block_size>>>(edges,eptr,colors,d_prior_ptr,
+        kernel_step_1<V_PER_THREAD><<<grid_size, block_size>>>(edges,eptr,colors_dptr,d_prior_ptr,
                                                   d_uncolored_ptr,V,current_color,random_seed);     
         cudaDeviceSynchronize();
-        kernel_step_2<V_PER_THREAD><<<grid_size, block_size>>>(edges,eptr,colors,d_prior_ptr,
+        kernel_step_2<V_PER_THREAD><<<grid_size, block_size>>>(edges,eptr,colors_dptr,d_prior_ptr,
                                                                 d_uncolored_ptr,d_local_max_ptr,V,current_color,random_seed);  
         cudaDeviceSynchronize();
-        kernel_step_3<V_PER_THREAD><<<grid_size, block_size>>>(edges,eptr,colors,d_prior_ptr,
+        kernel_step_3<V_PER_THREAD><<<grid_size, block_size>>>(edges,eptr,colors_dptr,d_prior_ptr,
                                                               d_uncolored_ptr,d_local_max_ptr,V,current_color,random_seed);  
         cudaDeviceSynchronize();
         current_color++;

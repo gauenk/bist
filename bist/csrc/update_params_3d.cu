@@ -29,7 +29,8 @@ __host__ void update_params(spix_params* aos_params, spix_helper* sp_helper, Poi
     cudaMemset(sp_helper, 0, nspix_buffer*sizeof(spix_helper));
 
     // -- accumulate via sum --
-    sum_by_label<<<VertexBlocks,NumThreads>>>(data.ftrs,data.pos,data.ptr,data.bids,
+    sum_by_label<<<VertexBlocks,NumThreads>>>(data.ftrs_ptr(),data.pos_ptr(),
+                                              data.vptr_ptr(),data.vertex_batch_ids_ptr(),
                                               soa_params.spix_ptr(),soa_params.csum_nspix_ptr(),
                                               aos_params,sp_helper,data.V,nspix_buffer);
 

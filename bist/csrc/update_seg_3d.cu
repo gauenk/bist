@@ -63,19 +63,19 @@ __host__ void update_seg(spix_params* aos_params, spix_helper* sp_helper, PointC
     // assert(nbatch==1);
     for (int iter = 0 ; iter < args.niters_seg; iter++){
         cudaMemset(border, 0, data.V*sizeof(bool));
-        find_border_vertex<<<VertexBlocks,NumThreads>>>(spix,border,data.csr_edges,data.csr_eptr,data.V);
+        find_border_vertex<<<VertexBlocks,NumThreads>>>(spix,border,data.csr_edges_ptr(),data.csr_eptr_ptr(),data.V);
 
         for (int graph_color_index=0; graph_color_index < data.gchrome; graph_color_index++){
 
-            approximate_articulation_points<<<ArtNumBlocks,ArtNumThreads>>>(spix,data.csr_edges,data.csr_eptr,is_simple_point,neigh_neq,data.V);
+            approximate_articulation_points<<<ArtNumBlocks,ArtNumThreads>>>(spix,data.csr_edges_ptr(),data.csr_eptr_ptr(),is_simple_point,neigh_neq,data.V);
             // gpuErrchk( cudaPeekAtLastError() );
             // gpuErrchk( cudaDeviceSynchronize() );
             // printf("step.\n");
 
             update_seg_subset<<<VertexBlocks,NumThreads>>>(aos_params,spix,border,is_simple_point,
-                                                          data.ftrs,data.pos,neigh_neq,
-                                                          data.gcolors,graph_color_index,
-                                                          data.csr_edges,data.csr_eptr,
+                                                          data.ftrs_ptr(),data.pos_ptr(),neigh_neq,
+                                                          data.gcolors_ptr(),graph_color_index,
+                                                          data.csr_edges_ptr(),data.csr_eptr_ptr(),
                                                           data.V,args.sigma2_app,args.potts);
             // gpuErrchk( cudaPeekAtLastError() );
             // gpuErrchk( cudaDeviceSynchronize() );

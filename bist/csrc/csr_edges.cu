@@ -1,14 +1,32 @@
 
 
-// -- thrust --
-#include <thrust/device_vector.h>
-#include <thrust/host_vector.h>
-#include <thrust/copy.h>
-#include <thrust/reduce.h>
-#include <thrust/fill.h>
-#include <thrust/extrema.h>
-#include <thrust/transform.h>
-#include <thrust/iterator/counting_iterator.h>
+/************************
+ * 
+ * 
+ * 
+ * 
+ * 
+ * 
+ * 
+ * 
+ *  Example CSR to Pairs:
+ * 
+ * // thrust::device_vector<uint32_t> edges;
+    // thrust::device_vector<int> eptr;
+    // thrust::device_vector<uint8_t> ebids;
+    // std::tie(edges,eptr,ebids) = get_edges_from_csr(data.csr_edges_ptr(),data.csr_eptr_ptr(),
+    //                                         data.vptr_ptr(),data.vertex_batch_ids_ptr(),data.V,data.B);
+    // uint32_t* edges_dptr = thrust::raw_pointer_cast(edges.data());
+    // int* eptr_dptr = thrust::raw_pointer_cast(eptr.data());
+    // uint8_t* ebids_dptr = thrust::raw_pointer_cast(ebids.data());
+    // int num_edge_pairs_og = eptr.back();
+    // assert(data.E == num_edge_pairs_og);
+
+ * 
+ * 
+ **************************/
+
+
 
 // -- cuda --
 #include "cuda.h"
@@ -72,15 +90,17 @@ __global__ void fill_csr_edges_kernel(uint32_t* edges, uint8_t* ebids,
     csr_edges[pos_v] = u;
 }
 
-std::tuple<uint32_t*, uint32_t*>
+std::tuple<thrust::device_vector<uint32_t>,thrust::device_vector<uint32_t>>
 get_csr_graph_from_edges(uint32_t* edges, uint8_t* ebids, int* eptr, int* vptr, int V, int E){
 
     //  -- view --
     //printf("V,E: %d,%d\n",V,E);
 
     // -- allocate edge pointer --
-    uint32_t* csr_eptr = (uint32_t*)easy_allocate((V+1),sizeof(uint32_t));
-    cudaMemset(csr_eptr, 0, sizeof(uint32_t)); // first byte is zero
+    thrust::device_vector<uint32_t> csr_eptr(V+1,0);
+    uint32_t* csr_eptr_dptr = thrust::raw_pointer_cast(csr_eptr.data());
+    // uint32_t* csr_eptr = (uint32_t*)easy_allocate((V+1),sizeof(uint32_t));
+    // cudaMemset(csr_eptr, 0, sizeof(uint32_t)); // first byte is zero
 
     // -- allocate helpers --
     uint32_t* degree = (uint32_t*)easy_allocate(V,sizeof(uint32_t));
@@ -100,8 +120,8 @@ get_csr_graph_from_edges(uint32_t* edges, uint8_t* ebids, int* eptr, int* vptr, 
     count_degrees_kernel<<<grid_size, block_size>>>(edges, ebids, eptr, vptr, degree, E);
 
     // Step 1b:: Compute prefix sum to get csr_eptr
-    thrust::inclusive_scan(thrust::device, degree, degree + V, csr_eptr + 1);
-    cudaMemcpy(curr_pos, csr_eptr, V * sizeof(uint32_t), cudaMemcpyDeviceToDevice);
+    thrust::inclusive_scan(thrust::device, degree, degree + V, csr_eptr_dptr + 1);
+    cudaMemcpy(curr_pos, csr_eptr_dptr, V * sizeof(uint32_t), cudaMemcpyDeviceToDevice);
 
     //
     //
@@ -110,11 +130,13 @@ get_csr_graph_from_edges(uint32_t* edges, uint8_t* ebids, int* eptr, int* vptr, 
     //
 
     // -- allocate & fill csr edges --
-    int num_csr_edges;
-    cudaMemcpy(&num_csr_edges,&csr_eptr[V],sizeof(uint32_t),cudaMemcpyDeviceToHost);
-    //printf("num_csr_edges: %d,%d\n",num_csr_edges,E);
-    uint32_t* csr_edges = (uint32_t*)easy_allocate((num_csr_edges+1),sizeof(uint32_t));
-    fill_csr_edges_kernel<<<grid_size, block_size>>>(edges, ebids, eptr, vptr, csr_edges, csr_eptr, curr_pos, E);
+    int num_csr_edges = csr_eptr.back();
+    //cudaMemcpy(&num_csr_edges,&csr_eptr[V],sizeof(uint32_t),cudaMemcpyDeviceToHost);
+    printf("num_csr_edges: %d,%d\n",num_csr_edges,E);
+    //uint32_t* csr_edges = (uint32_t*)easy_allocate((num_csr_edges+1),sizeof(uint32_t));
+    thrust::device_vector<uint32_t> csr_edges(num_csr_edges+1,0); // ? why +1?
+    uint32_t* csr_edges_dptr = thrust::raw_pointer_cast(csr_edges.data());
+    fill_csr_edges_kernel<<<grid_size, block_size>>>(edges, ebids, eptr, vptr, csr_edges_dptr, csr_eptr_dptr, curr_pos, E);
     
     // -- view --
     // thrust::device_ptr<uint32_t> csr_edges_thp(csr_edges);
@@ -150,7 +172,8 @@ get_csr_graph_from_edges(uint32_t* edges, uint8_t* ebids, int* eptr, int* vptr, 
 
 
 // CUDA kernel to write pairs only if vertex < neigh.
-__global__ void write_too_big(uint32_t* edges2big, int* bcount, bool* flag,
+__global__ void write_too_big(uint32_t* edges2big, uint8_t* ebids, int* bcount, 
+                            bool* flag, bool* flag_v2,
                             const uint32_t* csr_edges, const uint32_t* csr_eptr, 
                             int* vptr, const uint8_t* vbids, int V) {
 
@@ -175,13 +198,16 @@ __global__ void write_too_big(uint32_t* edges2big, int* bcount, bool* flag,
         edges2big[2*index+1] = neigh - vertex_batch_offset; // one day...
         flag[2*index] = true;
         flag[2*index+1] = true;
+        flag_v2[index] = true;
+        ebids[index] = bx;
         nedges += 1;
     }
     atomicAdd(&bcount[bx],nedges);
 
 }
 
-std::tuple<uint32_t*, int*>
+//std::tuple<uint32_t*, int*>
+std::tuple<thrust::device_vector<uint32_t>,thrust::device_vector<int>,thrust::device_vector<uint8_t>>
 get_edges_from_csr(uint32_t* csr_edges, uint32_t* csr_eptr, int* vptr, uint8_t* vbids, int V, int B){
 
     // -- number of total edges --
@@ -190,9 +216,14 @@ get_edges_from_csr(uint32_t* csr_edges, uint32_t* csr_eptr, int* vptr, uint8_t* 
     int E = num_csr_edges/2;
 
     // -- allocate --
+    thrust::device_vector<int> eptr_th(B+1,0);
+    thrust::device_vector<uint8_t> ebids(num_csr_edges,0);
+    uint8_t* ebids_dptr = thrust::raw_pointer_cast(ebids.data());
+    int* eptr = thrust::raw_pointer_cast(eptr_th.data());
     uint32_t* edges2big = (uint32_t*)easy_allocate(2*num_csr_edges,sizeof(uint32_t));
     bool* flags = (bool*)easy_allocate(2*num_csr_edges,sizeof(bool));
-    int* eptr = (int*)easy_allocate((B+1),sizeof(int));
+    bool* flags_v2 = (bool*)easy_allocate(num_csr_edges,sizeof(bool));
+    //int* eptr = (int*)easy_allocate((B+1),sizeof(int));
     int* bcount = (int*)easy_allocate(B,sizeof(int));
     cudaMemset(bcount, 0, B*sizeof(int)); // first byte is zero
     cudaMemset(flags, 0, 2*num_csr_edges*sizeof(bool)); // first byte is zero
@@ -201,7 +232,7 @@ get_edges_from_csr(uint32_t* csr_edges, uint32_t* csr_eptr, int* vptr, uint8_t* 
     // -- Write only (min(e0,e1),max(e0,e1)) pairs; Lots of "empty" space.  --
     int block_size = 256;
     int grid_size = (V + block_size - 1) / block_size;
-    write_too_big<<<grid_size, block_size>>>(edges2big, bcount, flags, csr_edges, csr_eptr, vptr, vbids, V);
+    write_too_big<<<grid_size, block_size>>>(edges2big, ebids_dptr, bcount, flags, flags_v2, csr_edges, csr_eptr, vptr, vbids, V);
     
     // -- accumulate across eptr --
     cudaMemset(eptr, 0, sizeof(int)); // first byte is zero
@@ -212,7 +243,12 @@ get_edges_from_csr(uint32_t* csr_edges, uint32_t* csr_eptr, int* vptr, uint8_t* 
     cudaMemcpy(&_nedges,&eptr[B],sizeof(int),cudaMemcpyDeviceToHost);
     //printf("nedges vs _nedges: %d,%d\n",E,_nedges);
 
-    // -- Use CUB to compactify the result. --
+    //
+    //
+    // -- Compactify Edges --
+    //
+    //
+
     void* d_temp = nullptr;
     size_t temp_bytes = 0;
     unsigned int* d_num_selected;
@@ -233,24 +269,66 @@ get_edges_from_csr(uint32_t* csr_edges, uint32_t* csr_eptr, int* vptr, uint8_t* 
         2*num_csr_edges
     );
 
-    // -- ... --
-    // uint32_t _tmp;
-    // cudaMemcpy(&_tmp,d_num_selected,sizeof(uint32_t),cudaMemcpyDeviceToHost);
-    // printf("[edges from csr]: %d %d\n",_tmp,2*E);
+    // -- for checking --
+    uint32_t _nedges_twice_chk;
+    cudaMemcpy(&_nedges_twice_chk,d_num_selected,sizeof(uint32_t),cudaMemcpyDeviceToHost);
 
     // -- keep only the filled portion --
-    uint32_t* edges = (uint32_t*)easy_allocate(2*E,sizeof(uint32_t));
-    cudaMemcpy(edges,edges2big,2*E*sizeof(uint32_t),cudaMemcpyDeviceToDevice);
+    //uint32_t* edges = (uint32_t*)easy_allocate(2*E,sizeof(uint32_t));
+    thrust::device_vector<uint32_t> edges(2*E,0);
+    uint32_t* edges_dptr = thrust::raw_pointer_cast(edges.data()); 
+    cudaMemcpy(edges_dptr,edges2big,2*E*sizeof(uint32_t),cudaMemcpyDeviceToDevice);
+
+
+
+    //
+    //
+    // -- Compactify Batch Indices --
+    //
+    //
+
+    void* d_temp_v2 = nullptr;
+    size_t temp_bytes_v2 = 0;
+    unsigned int* d_num_selected_v2;
+    cudaMalloc(&d_num_selected_v2, sizeof(unsigned int));
+    cudaMemset(d_num_selected_v2, 0, sizeof(unsigned int));
+
+    cub::DeviceSelect::Flagged(
+        d_temp_v2, temp_bytes_v2,
+        ebids_dptr, flags_v2,
+        d_num_selected_v2,
+        num_csr_edges
+    );
+    cudaMalloc(&d_temp_v2, temp_bytes_v2);
+    cub::DeviceSelect::Flagged(
+        d_temp_v2, temp_bytes_v2,
+        ebids_dptr, flags_v2,
+        d_num_selected_v2,
+        num_csr_edges
+    );
+
+    // -- for checking --
+    uint32_t _nedges_chk;
+    cudaMemcpy(&_nedges_chk,d_num_selected_v2,sizeof(uint32_t),cudaMemcpyDeviceToHost);
+    //printf("_nedges_twice_chk,_nedges_chk: %d, %d\n",_nedges_twice_chk,_nedges_chk);
+    assert(_nedges_twice_chk == 2*_nedges_chk);
+    assert(_nedges_chk == E);
+
+    // -- keep only the filled portion --
+    ebids.resize(E);
 
     // -- free --
     cudaFree(bcount);
     cudaFree(d_temp);
     cudaFree(d_num_selected);
+    cudaFree(d_temp_v2);
+    cudaFree(d_num_selected_v2);
     cudaFree(edges2big);
+    cudaFree(flags_v2);
     cudaFree(flags);
 
     // -- return --
-    return std::tuple(edges,eptr);
+    return std::tuple(edges,eptr_th,ebids);
 }
 
 

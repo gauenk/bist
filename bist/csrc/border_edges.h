@@ -19,5 +19,7 @@
 // std::tuple<thrust::device_vector<uint32_t>,thrust::device_vector<uint32_t>>
 // get_border_edges(PointCloudData& data, SuperpixelParams3d& params, bool* border, uint32_t* edges);
 
-std::tuple<thrust::device_vector<uint32_t>,thrust::device_vector<uint32_t>>
-get_border_edges(uint32_t* spix, bool* border, uint32_t* edges, uint32_t E);
+// std::tuple<thrust::device_vector<uint32_t>,thrust::device_vector<int>,thrust::device_vector<uint8_t>>
+// get_border_edges(uint32_t* spix, bool* border, uint32_t* edges, uint8_t* edge_batch_ids, uint32_t B, int32_t E);
+std::tuple<thrust::device_vector<uint32_t>,thrust::device_vector<int>,thrust::device_vector<uint8_t>>
+get_border_edges(uint32_t* spix, bool* border, uint32_t* edges, uint8_t* edge_batch_ids, uint32_t B, uint32_t E);

@@ -44,7 +44,8 @@ poly_from_points(PointCloudData& data, SuperpixelParams3d& params, bool* border)
 
     // -- count number of vertex per nspix --
     thrust::device_vector<uint32_t> nvertex_by_spix(params.nspix_sum, 0);
-    nvertices_per_spix_kernel<<<VertexBlocks,NumThreads>>>(thrust::raw_pointer_cast(nvertex_by_spix.data()), params.spix_ptr(), params.border_ptr(), params.csum_nspix_ptr(), data.bids, data.V);
+    nvertices_per_spix_kernel<<<VertexBlocks,NumThreads>>>(thrust::raw_pointer_cast(nvertex_by_spix.data()), params.spix_ptr(), 
+                                            params.border_ptr(), params.csum_nspix_ptr(), data.vertex_batch_ids_ptr(), data.V);
 
     // -- accumulate --
     thrust::device_vector<uint32_t> nvertex_by_spix_csum(params.nspix_sum+1, 0);
@@ -63,7 +64,7 @@ poly_from_points(PointCloudData& data, SuperpixelParams3d& params, bool* border)
     thrust::device_vector<uint32_t> list_of_vertices(V_edges, 0);
     int vertex_edges_nblocks = ceil( double(V_edges) / double(NumThreads) ); 
     dim3 VertexEdgesBlocks(vertex_edges_nblocks);
-    list_vertices_by_spix<<<VertexEdgesBlocks,NumThreads>>>(thrust::raw_pointer_cast(list_of_vertices.data()), params.spix_ptr(), params.border_ptr(), data.bids, 
+    list_vertices_by_spix<<<VertexEdgesBlocks,NumThreads>>>(thrust::raw_pointer_cast(list_of_vertices.data()), params.spix_ptr(), params.border_ptr(), data.vertex_batch_ids_ptr(), 
                                                            params.csum_nspix_ptr(),thrust::raw_pointer_cast(access_offsets.data()),thrust::raw_pointer_cast(nvertex_by_spix_csum.data()),data.V);
         
     // gpuErrchk( cudaPeekAtLastError() );
@@ -77,9 +78,9 @@ poly_from_points(PointCloudData& data, SuperpixelParams3d& params, bool* border)
     dim3 SpixBlocks(spix_nblocks);
     thrust::device_vector<uint32_t> ordered_verts(V_edges, 0);
     reorder_vertices_backtracking_cycle<<<SpixBlocks,NumThreads>>>(thrust::raw_pointer_cast(list_of_vertices.data()), 
-                                                          data.csr_edges, data.csr_eptr, data.bids, 
+                                                          data.csr_edges_ptr(), data.csr_eptr_ptr(), data.vertex_batch_ids_ptr(), 
                                                           params.csum_nspix_ptr(),thrust::raw_pointer_cast(nvertex_by_spix_csum.data()),
-                                                          thrust::raw_pointer_cast(ordered_verts.data()),data.pos,data.V,params.nspix_sum);
+                                                          thrust::raw_pointer_cast(ordered_verts.data()),data.pos_ptr(),data.V,params.nspix_sum);
 
 
     // gpuErrchk( cudaPeekAtLastError() );
