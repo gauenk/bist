@@ -12,6 +12,8 @@
 #include "border_edges.h"
 #include <cub/cub.cuh>
 
+#include "seg_utils_3d.h"
+
 
 #define THREADS_PER_BLOCK 512
 
@@ -39,6 +41,28 @@ edge_counts(int* counts, const uint32_t* edges, const uint8_t* edge_batch_ids, c
     atomicAdd(&counts[batch_index],1);
 }
 
+
+
+void filter_to_border_edges(PointCloudData& data){
+
+    // -- update border --
+    data.border.resize(data.V,0);
+    //cudaMemset(border_data.border_ptr(), 0, border_data.V*sizeof(bool));
+    set_border(data.labels_ptr(), data.border_ptr(), data.csr_edges_ptr(),data.csr_eptr_ptr(),data.V);
+
+    // -- keep only edges along the border for a "B-" viz --
+    thrust::device_vector<uint32_t> border_edges;
+    thrust::device_vector<int> border_eptr;
+    thrust::device_vector<uint8_t> border_bids;
+    // std::tie(border_edges,border_eptr,border_bids) = get_border_edges(params.spix_ptr(),border,edges_dptr,ebids_dptr,data.B,data.E);
+    std::tie(border_edges,border_eptr,border_bids) = get_border_edges(data.labels_ptr(),data.border_ptr(),data.edges_ptr(),data.edge_batch_ids_ptr(),data.B,data.E);
+    int num_edges = border_edges.size()/2;
+    thrust::host_vector<uint32_t> edges_cpu = border_edges;
+    data.edges = std::move(border_edges);
+    data.eptr = std::move(border_eptr);
+    data.edge_batch_ids = std::move(border_bids);
+    return;
+}
 
 std::tuple<thrust::device_vector<uint32_t>,thrust::device_vector<int>,thrust::device_vector<uint8_t>>
 get_border_edges(uint32_t* spix, bool* border, uint32_t* edges, uint8_t* edge_batch_ids, uint32_t B, uint32_t E){

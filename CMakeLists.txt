@@ -77,6 +77,7 @@ set(SHARED_SOURCES_3D
   bist/csrc/poly_from_points.cu
   bist/csrc/border_edges.cu
   bist/csrc/logger_3d.cu
+  bist/csrc/face_dual.cu
 )
 
 # Explicitly mark .cu files as CUDA

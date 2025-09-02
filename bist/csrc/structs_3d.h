@@ -285,6 +285,7 @@ struct PointCloudData {
     thrust::device_vector<int> fptr;
     thrust::device_vector<float> bounding_boxes;
     thrust::device_vector<uint32_t> labels;
+    thrust::device_vector<bool> border;
    
     // Scalar parameters
     uint8_t gchrome;
@@ -304,6 +305,8 @@ struct PointCloudData {
     int* eptr_ptr() { return thrust::raw_pointer_cast(eptr.data()); }
     int* fptr_ptr() { return thrust::raw_pointer_cast(fptr.data()); }
     float* bounding_boxes_ptr() { return thrust::raw_pointer_cast(bounding_boxes.data()); }
+    uint32_t* labels_ptr() { return thrust::raw_pointer_cast(labels.data()); }
+    bool* border_ptr() { return thrust::raw_pointer_cast(border.data()); }
    
     // Host vector methods for data transfer
     thrust::host_vector<float3> ftrs_host() const {
@@ -420,7 +423,7 @@ struct PointCloudData {
                 const std::vector<int>& eptr_h,
                 const std::vector<int>& fptr_h,
                 const std::vector<float>& bounding_boxes_h,
-                uint8_t gchrome, int B, int V, int E, int F)
+                int B, int V, int E, int F)
       : ftrs(ftrs_h.begin(), ftrs_h.end())
       , pos(pos_h.begin(), pos_h.end())
       , faces(faces_h.begin(), faces_h.end())
@@ -431,7 +434,32 @@ struct PointCloudData {
       , eptr(eptr_h.begin(), eptr_h.end())
       , fptr(fptr_h.begin(), fptr_h.end())
       , bounding_boxes(bounding_boxes_h.begin(), bounding_boxes_h.end())
-      , gchrome(gchrome)
+      , gchrome(0)
+      , B(B), V(V), E(E), F(F)
+  {}
+
+  PointCloudData(const thrust::device_vector<float3>& ftrs_d,
+                const thrust::device_vector<float3>& pos_d,
+                const thrust::device_vector<uint32_t>& faces_d,
+                const thrust::device_vector<uint32_t>& edges_d,
+                const thrust::device_vector<uint8_t>& vertex_batch_ids_d,
+                const thrust::device_vector<uint8_t>& edge_batch_ids_d,
+                const thrust::device_vector<int>& vptr_d,
+                const thrust::device_vector<int>& eptr_d,
+                const thrust::device_vector<int>& fptr_d,
+                const thrust::device_vector<float>& bounding_boxes_d,
+                int B, int V, int E, int F)
+      : ftrs(ftrs_d)
+      , pos(pos_d)
+      , faces(faces_d)
+      , edges(edges_d)
+      , vertex_batch_ids(vertex_batch_ids_d)
+      , edge_batch_ids(edge_batch_ids_d)
+      , vptr(vptr_d)
+      , eptr(eptr_d)
+      , fptr(fptr_d)
+      , bounding_boxes(bounding_boxes_d)
+      , gchrome(0)
       , B(B), V(V), E(E), F(F)
   {}
 

@@ -51,58 +51,29 @@ Logger::Logger(const std::filesystem::path& _output_root,
 
 void Logger::boundary_update(PointCloudData& in_data, SuperpixelParams3d& params, spix_params* sp_params) {
 
-    // -- ... --
+    // -- keep edges only --
     PointCloudData data = in_data.copy();
     data.labels = params.spix;
-    //thrust::host_vector<uint32_t> csum_nspix = params.csum_nspix;
+    data.border = params.border;
+    // cudaMemset(data.border_ptr(), 0, data.V*sizeof(bool));
+    // set_border(data.labels_ptr(), data.border_ptr(), data.csr_edges_ptr(),data.csr_eptr_ptr(),data.V);
+    filter_to_border_edges(data);
 
-
-    thrust::device_vector<bool> border_cpy = params.border;
-    bool* border = thrust::raw_pointer_cast(border_cpy.data());
-    cudaMemset(border, 0, data.V*sizeof(bool));
-    set_border(params.spix_ptr(), border, data.csr_edges_ptr(),data.csr_eptr_ptr(),data.V);
-    
     // -- prepare superpixel information --
     aos_to_soa(sp_params, params); // from spix_params -> SuperpixelParams3d
 
-    //
-    // -- too much work.... explain later... pretty silly... [marked for deletion on 09/02]
-    //
-
-    // // -- just copy for testing --
-    // border_edges.resize(2*data.E);
-    // thrust::device_ptr<uint32_t> csr_edges_dptr(data.csr_edges);
-    // thrust::copy(csr_edges_dptr,csr_edges_dptr+2*data.E,border_edges.begin());
-    // border_ptr.resize(data.E+1);
-    // thrust::device_ptr<uint32_t> eptr_dptr(data.csr_eptr);
-    // thrust::copy(eptr_dptr,eptr_dptr+data.E+1,border_ptr.begin());
-
-    // // -- from csr_edges to pairs [we happen to write this way...] --
-    // uint32_t* border_edges_ptr = thrust::raw_pointer_cast(border_edges.data());
-    // uint32_t* border_ptr_dptr = thrust::raw_pointer_cast(border_ptr.data());
-    // uint32_t* edges;
-    // int* eptr;
-    // std::tie(edges,eptr) = get_edges_from_csr(border_edges_ptr,border_ptr_dptr,data.ptr,data.bids,data.V,data.B);
-
-    // uint32_t* csr_edges = thrust::raw_pointer_cast(border_edges.data());
-    // uint32_t* csr_eptr = thrust::raw_pointer_cast(border_ptr.data());
-
-
-    // -- get pairs of edges instead of csr... might just be ".edges,.eptr,.edge_batch_ids"--
-
-
-    // -- keep only edges along the border for a "B-" viz --
-    thrust::device_vector<uint32_t> border_edges;
-    thrust::device_vector<int> border_eptr;
-    thrust::device_vector<uint8_t> border_bids;
-    // std::tie(border_edges,border_eptr,border_bids) = get_border_edges(params.spix_ptr(),border,edges_dptr,ebids_dptr,data.B,data.E);
-    std::tie(border_edges,border_eptr,border_bids) = get_border_edges(params.spix_ptr(),border,data.edges_ptr(),data.edge_batch_ids_ptr(),data.B,data.E);
-    int num_edges = border_edges.size()/2;
-    thrust::host_vector<uint32_t> edges_cpu = border_edges;
-    data.edges = std::move(border_edges);
-    data.eptr = std::move(border_eptr);
-    data.edge_batch_ids = std::move(border_bids);
-
+    // // -- keep only edges along the border for a "B-" viz --
+    // filter_to_border_edges()
+    // thrust::device_vector<uint32_t> border_edges;
+    // thrust::device_vector<int> border_eptr;
+    // thrust::device_vector<uint8_t> border_bids;
+    // // std::tie(border_edges,border_eptr,border_bids) = get_border_edges(params.spix_ptr(),border,edges_dptr,ebids_dptr,data.B,data.E);
+    // std::tie(border_edges,border_eptr,border_bids) = get_border_edges(params.spix_ptr(),border,data.edges_ptr(),data.edge_batch_ids_ptr(),data.B,data.E);
+    // int num_edges = border_edges.size()/2;
+    // thrust::host_vector<uint32_t> edges_cpu = border_edges;
+    // data.edges = std::move(border_edges);
+    // data.eptr = std::move(border_eptr);
+    // data.edge_batch_ids = std::move(border_bids);
 
     int bx = 0;
     // printf("log_roots.size(): %d\n",log_roots.size());
@@ -122,18 +93,7 @@ void Logger::boundary_update(PointCloudData& in_data, SuperpixelParams3d& params
 
         // -- get batch slice --
         SuperpixelParams3dHost host_spix(params,bx);
-        // int start_idx = csum_nspix[bx];
-        // int end_idx = csum_nspix[bx + 1];
-        // int nspix = end_idx - start_idx;
-        // thrust::host_vector<float3> mu_app(params.mu_app.begin() + start_idx,
-        //                                     params.mu_app.begin() + end_idx);
-        // thrust::host_vector<double3> mu_pos(params.mu_pos.begin() + start_idx,
-        //                                     params.mu_pos.begin() + end_idx);
-        // thrust::host_vector<double3> var_pos(params.var_pos.begin() + start_idx,
-        //                                     params.var_pos.begin() + end_idx);
-        // thrust::host_vector<double3> cov_pos(params.cov_pos.begin() + start_idx,
-        //                                     params.cov_pos.begin() + end_idx);
-
+ 
         // -- write superpixel information --
         ScanNetScene scene;
         bool tmp = scene.write_spix_ply(ply_file,host_spix);//mu_app,mu_pos,var_pos,cov_pos,nspix);

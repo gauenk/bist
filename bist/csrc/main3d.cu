@@ -24,6 +24,10 @@
 #include "scannet_reader.h"
 #include "csr_edges.h"
 #include "graph_coloring.h"
+#include "face_dual.h"
+
+#include "border_edges.h"
+// #include "seg_utils_3d.h"
 
 using namespace std;
 
@@ -184,76 +188,38 @@ int main(int argc, char **argv) {
             // -- read batch of scenes --
             int s_index = _ix*batchsize;
             int e_index = std::min((_ix+1)*batchsize, (int)scene_files.size());
-            int bsize = e_index - s_index;
             std::vector<std::filesystem::path> scene_files_b(scene_files.begin() + s_index, scene_files.begin() + e_index);
-            auto read_out = read_scene(scene_files_b);
+            //auto read_out = read_scene(scene_files_b);
             PointCloudData data  = read_scene(scene_files_b);
-
-            auto ftrs = data.ftrs_host();
-            for (int ix = 0; ix< 10; ix++){
-                printf("ftrs: %2.2f %2.2f %2.2f\n",ftrs[ix].x,ftrs[ix].y,ftrs[ix].z);
-            }
-            // float3* ftrs = std::get<0>(read_out);
-            // float3* pos = std::get<1>(read_out);
-            // uint32_t* edges = std::get<2>(read_out);
-            // uint8_t* bids = std::get<3>(read_out);
-            // uint8_t* ebids = std::get<4>(read_out);
-            // int* vptr = std::get<5>(read_out);
-            // int* eptr = std::get<6>(read_out);
-            // float* dim_sizes = std::get<7>(read_out);
-            // uint32_t* faces = std::get<8>(read_out);
-            // int* fptr = std::get<9>(read_out);
-            int nbatch_b = scene_files_b.size();
+            int B = scene_files_b.size();
             cudaDeviceSynchronize();
 
-            // -- some reading; idk why not just return it by whatever --
-            // int V_total;
-            // cudaMemcpy(&V_total,&vptr[nbatch_b],sizeof(int),cudaMemcpyDeviceToHost);
-            // int E_total;
-            // cudaMemcpy(&E_total,&eptr[nbatch_b],sizeof(int),cudaMemcpyDeviceToHost);
-            // int F_total;
-            // cudaMemcpy(&F_total,&fptr[nbatch_b],sizeof(int),cudaMemcpyDeviceToHost);
-            // printf("V_total E_total, F_total : %d %d %d\n",V_total,E_total,F_total);
 
-            // // -- convert to csr --
-            // uint32_t* csr_edges;
-            // uint32_t* csr_eptr;
+            // -- convert to csr --
             thrust::device_vector<uint32_t> csr_edges;
             thrust::device_vector<uint32_t> csr_eptr;
             std::tie(csr_edges,csr_eptr) = get_csr_graph_from_edges(data.edges_ptr(),data.edge_batch_ids_ptr(),data.eptr_ptr(),data.vptr_ptr(),data.V,data.E);
             data.csr_edges = std::move(csr_edges);
             data.csr_eptr = std::move(csr_eptr);
 
-            // // -- check csr_edges --
+            // -- check csr_edges --
             // thrust::device_vector<uint32_t> _edges_chk;
             // thrust::device_vector<int> _eptr_chk;
-            // std::tie(_edges_chk,_eptr_chk) = get_edges_from_csr(csr_edges,csr_eptr,vptr,bids,V_total,nbatch_b);
+            // std::tie(_edges_chk,_eptr_chk) = get_edges_from_csr(data.csr_edges_ptr(),data.csr_eptr_ptr(),data.vptr_ptr(),data.vertex_batch_ids_ptr(),data.V,data.B);
 
             // -- get graph colors --
             uint8_t gchrome;
             thrust::device_vector<uint8_t> gcolors;
             std::tie(gcolors,gchrome) = get_graph_coloring(data.csr_edges_ptr(), data.csr_eptr_ptr(), data.V);
-            printf("graph chromaticity: %d\n",gchrome);
+            //printf("graph chromaticity: %d\n",gchrome);
             data.gcolors = std::move(gcolors);
             data.gchrome = gchrome;
-
-            // -- update sp_size to control # of spix --
-            // if (controlled_nspix){
-            //   float _sp_size = (1.0*height*width) / (1.0*target_nspix);
-            //   sp_size = round(sqrt(_sp_size));
-            //   sp_size = max(sp_size,5);
-            // }
 
             /**********************************************
              * 
              *      Get the Face-Dual Data
              * 
              ***********************************************/
-
-            // PointCloudData data{ftrs, pos, gcolors, csr_edges, csr_eptr, 
-            //     bids, vptr, eptr, dim_sizes, faces, fptr, gchrome, 
-            //     scene_files_b.size(), V_total, E_total, F_total};
-            
 
 
             /**********************************************
@@ -262,27 +228,20 @@ int main(int argc, char **argv) {
 
             **********************************************/
 
-            // -- single image --
-            // uint32_t* spix = nullptr;
-            // bool* border = nullptr;
-            // int nspix = -1;
-            // SuperpixelParams* params = nullptr;
-
+            // -- create logger --
+            Logger* logger = nullptr;
+            if (logging==1){
+                logger = new Logger(output_root,scene_files_b);
+            }
+            
             // -- start timer --
             clock_t start,finish;
             cudaDeviceSynchronize();
             start = clock();
 
-            
-            Logger* logger = nullptr;
             // -- run segmentation --
-            // PointCloudData data{ftrs, pos, gcolors, csr_edges, csr_eptr, 
-            //                     bids, vptr, eptr, dim_sizes, faces, fptr, gchrome, 
-            //                     scene_files_b.size(), V_total, E_total, F_total};
-            if (logging==1){
-                logger = new Logger(output_root,scene_files_b);
-            }
             SuperpixelParams3d params = run_bass3d(data, args, logger);
+            data.labels = params.spix;
 
             // -- benchmarking/tracking --
             niters_ave += niters;
@@ -299,96 +258,64 @@ int main(int argc, char **argv) {
 
             /**********************************************
 
-                   Part 2.5.5: Square stuff! [viz only]
-
-            **********************************************/
-
-            // // -- square border --
-            // int sq_sp_size = 25;
-            // auto _sq_out = get_square_segmentation(sq_sp_size, nbatch, height, width);
-            // int* sq_spix = std::get<0>(_sq_out);
-            // int sq_nspix = std::get<1>(_sq_out);
-            // bool* sq_border = std::get<2>(_sq_out);
-            // printf("sq_nspix: %d\n",sq_nspix);
-
-            // // -- save pooled --
-            // auto sq_out = get_img_pooled(img_rgb, sq_spix, height, width, sq_nspix);
-            // cv::Mat sq_pooled_img = std::get<0>(sq_out);
-            // float* sq_pooled_img_ptr = std::get<1>(sq_out);
-            // cv::String fname_sq_pooled=string(output_root)+subdir+\
-            //   "sq_pooled_"+img_number+".png";
-            // imwrite(fname_sq_pooled, sq_pooled_img);
-
-            // // -- save border on pooled image --
-            // cv::Mat sq_border_img = get_img_border(sq_pooled_img_ptr, sq_border,
-            //                                      height, width, nftrs);
-            // cv::String fname_sq_border = string(output_root)+subdir+\
-            //   "sq_border_"+img_number+".png";
-            // imwrite(fname_sq_border, sq_border_img);
-            // cudaFree(sq_pooled_img_ptr);
-            // cudaFree(sq_spix);
-            // cudaFree(sq_border);
-
-
-            /**********************************************
-
                        Part 3: Save Information
 
             **********************************************/
 
-            // -- todo! save segmentation --
-            // save_seg
-            // cv::String seg_idx_path = string(output_root)+img_number+".csv";
-            // save_spix_gpu(seg_idx_path, spix, height, width);
-            //my_write_function(string(output_root),scene_files,start_index,batchsize);
-
-            // -- save pooled --
-            // nspix = params->ids.size();
-            // auto out = get_img_pooled(img_rgb, spix, height, width, nspix);
-            // cv::Mat pooled_img = std::get<0>(out);
-            // float* pooled_img_ptr = std::get<1>(out);
-            // cv::String fname_res_pooled=string(output_root)+subdir+"pooled_"+img_number+".png";
-            // if (not save_only_spix){
-            //   imwrite(fname_res_pooled, pooled_img);
-            // }
-
-            // -- residual image --
-            // cv::Mat res_img = get_img_res(img_rgb, pooled_img_ptr, height, width);
-            // cv::String fname_res=string(output_root)+subdir+"res_"+img_number+".png";
-            // if (not save_only_spix){
-            //   imwrite(fname_res, res_img);
-            // }
-
-            // -- save border on pooled image --
-            // cv::Mat pborder_img = get_img_border(pooled_img_ptr, _border,
-            //                                      height, width, nftrs);
-            //cv::String fname_pborder=string(output_root)+subdir+"pborder_"+img_number+".png";
-            // imwrite(fname_pborder, pborder_img);
-            // cudaFree(pooled_img_ptr);
-
-            // -- save border --
-            // cv::Mat border_img = get_img_border(img_rgb, border, height, width, nftrs);
-            // cv::String fname_res_border=string(output_root)+"border_"+img_number+".png";
-            // if (not save_only_spix){
-            //   imwrite(fname_res_border, border_img);
-            // }
-            // // free(border_cpu);
-            // cudaFree(border);
-
-            // -- save parameters --
-            // cv::String params_idx_path =string(output_root)+img_number+"_params.csv";
-            // if (not save_only_spix){
-            //     save_params(params_idx_path,params);
-            // }
+            // -- keep edges only --
+            PointCloudData border_data = data.copy();
+            border_data.labels = params.spix;
+            border_data.border = params.border;
+            // cudaMemset(border_data.border_ptr(), 0, border_data.V*sizeof(bool));
+            // set_border(border_data.labels_ptr(), border_data.border_ptr(), border_data.csr_edges_ptr(),border_data.csr_eptr_ptr(),border_data.V);
+            filter_to_border_edges(border_data);
 
 
             // -- write and free --
-            // bool succ = write_scene(scene_files_b,output_root,ftrs,pos,edges,vptr,eptr,spix);
-            // bool succ = write_scene(scene_files_b,output_root,ftrs,pos,_edges_chk,vptr,_eptr_chk,gcolors,spix);
-            //bool succ = write_scene(scene_files_b,output_root,data.ftrs_ptr(),data.pos_ptr(),data.edges_ptr(),data.vptr_ptr(),data.eptr_ptr(),data.gcolors_ptr(),params.spix_ptr());
-            bool succ = write_scene(scene_files_b,output_root,data);
+            //bool succ = write_scene(scene_files_b,output_root,data);
             //succ = write_spix(scene_files_b,output_root,params);
             cudaDeviceSynchronize();
+
+            // -- write labeled mesh, spix, and dual mesh --
+            for (int batch_index=0; batch_index < B; batch_index++){
+                
+                // init scene [not really needed...]
+                ScanNetScene scene;
+
+                // -- get the save path --
+                std::string scene_name = scene_files_b[batch_index].filename().string();
+                std::filesystem::path write_path = output_root / scene_name;
+                if (!std::filesystem::exists(write_path)) {
+                    std::filesystem::create_directories(write_path);
+                }
+                std::filesystem::path mesh_fname = write_path / (scene_name + "_vh_clean_2.ply");
+                std::filesystem::path border_fname = write_path / (scene_name + "_border.ply");
+                std::filesystem::path spix_fname = write_path / (scene_name + "_spix.ply");
+
+
+                // -- get batch data --
+                PointCloudDataHost host_data(data,batch_index);
+                PointCloudDataHost host_border_data(border_data,batch_index);
+                SuperpixelParams3dHost host_spix(params,batch_index);
+
+                // -- write mesh scene --
+                if(!scene.write_ply(mesh_fname,host_data)){
+                    exit(1);
+                }
+        
+                // -- write border scene --
+                if(!scene.write_ply(border_fname,host_border_data)){
+                    exit(1);
+                }
+
+                // -- write spix scene --
+                if(!scene.write_spix_ply(spix_fname,host_spix)){
+                    exit(1);
+                }
+
+
+            }
+
 
             // -- free graph coloring --
             // cudaFree(gcolors);

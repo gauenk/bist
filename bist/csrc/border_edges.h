@@ -14,7 +14,7 @@
 
 #include "structs_3d.h"
 
-
+void filter_to_border_edges(PointCloudData& data);
 
 // std::tuple<thrust::device_vector<uint32_t>,thrust::device_vector<uint32_t>>
 // get_border_edges(PointCloudData& data, SuperpixelParams3d& params, bool* border, uint32_t* edges);
