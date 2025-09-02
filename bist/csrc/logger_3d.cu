@@ -54,7 +54,9 @@ void Logger::boundary_update(PointCloudData& in_data, SuperpixelParams3d& params
     // -- ... --
     PointCloudData data = in_data.copy();
     data.labels = params.spix;
-    thrust::host_vector<uint32_t> csum_nspix = params.csum_nspix;
+    //thrust::host_vector<uint32_t> csum_nspix = params.csum_nspix;
+
+
     thrust::device_vector<bool> border_cpy = params.border;
     bool* border = thrust::raw_pointer_cast(border_cpy.data());
     cudaMemset(border, 0, data.V*sizeof(bool));
@@ -119,22 +121,23 @@ void Logger::boundary_update(PointCloudData& in_data, SuperpixelParams3d& params
         std::filesystem::path ply_file = bndy_root / ss.str();
 
         // -- get batch slice --
-        int start_idx = csum_nspix[bx];
-        int end_idx = csum_nspix[bx + 1];
-        int nspix = end_idx - start_idx;
-        thrust::host_vector<float3> mu_app(params.mu_app.begin() + start_idx,
-                                            params.mu_app.begin() + end_idx);
-        thrust::host_vector<double3> mu_pos(params.mu_pos.begin() + start_idx,
-                                            params.mu_pos.begin() + end_idx);
-        thrust::host_vector<double3> var_pos(params.var_pos.begin() + start_idx,
-                                            params.var_pos.begin() + end_idx);
-        thrust::host_vector<double3> cov_pos(params.cov_pos.begin() + start_idx,
-                                            params.cov_pos.begin() + end_idx);
+        SuperpixelParams3dHost host_spix(params,bx);
+        // int start_idx = csum_nspix[bx];
+        // int end_idx = csum_nspix[bx + 1];
+        // int nspix = end_idx - start_idx;
+        // thrust::host_vector<float3> mu_app(params.mu_app.begin() + start_idx,
+        //                                     params.mu_app.begin() + end_idx);
+        // thrust::host_vector<double3> mu_pos(params.mu_pos.begin() + start_idx,
+        //                                     params.mu_pos.begin() + end_idx);
+        // thrust::host_vector<double3> var_pos(params.var_pos.begin() + start_idx,
+        //                                     params.var_pos.begin() + end_idx);
+        // thrust::host_vector<double3> cov_pos(params.cov_pos.begin() + start_idx,
+        //                                     params.cov_pos.begin() + end_idx);
 
         // -- write superpixel information --
         ScanNetScene scene;
-        //bool tmp = scene.write_spix_ply(ply_file,mu_app,mu_pos,var_pos,cov_pos,nspix);
-        bool tmp;
+        bool tmp = scene.write_spix_ply(ply_file,host_spix);//mu_app,mu_pos,var_pos,cov_pos,nspix);
+        //bool tmp;
 
        // -- save boundary edges --
         std::stringstream ss_scene;

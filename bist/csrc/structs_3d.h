@@ -138,6 +138,102 @@ struct SuperpixelParams3d{
 
 };
 
+struct SuperpixelParams3dHost {
+
+    // Superpixel stats for this batch
+    uint32_t nspix;
+    uint32_t prev_nspix;
+    uint32_t spix_offset;
+    
+    // Appearance and shape data for superpixels in this batch
+    std::vector<float3> mu_app;
+    std::vector<double3> mu_pos;
+    std::vector<double3> var_pos;
+    std::vector<double3> cov_pos;
+
+    // Alternative constructor if you already have vertex boundaries
+    SuperpixelParams3dHost(const SuperpixelParams3d& device_data, int batch_idx) {
+        // Validate inputs
+        if (batch_idx < 0 || batch_idx >= device_data.B) {
+            throw std::invalid_argument("Invalid batch index");
+        }
+
+        // Get nspix data to host first
+        thrust::host_vector<uint32_t> nspix_host(device_data.nspix.size());
+        thrust::copy(device_data.nspix.begin(), device_data.nspix.end(), nspix_host.begin());
+        
+        thrust::host_vector<uint32_t> prev_nspix_host(device_data.prev_nspix.size());
+        thrust::copy(device_data.prev_nspix.begin(), device_data.prev_nspix.end(), prev_nspix_host.begin());
+        
+        thrust::host_vector<uint32_t> csum_nspix_host(device_data.csum_nspix.size());
+        thrust::copy(device_data.csum_nspix.begin(), device_data.csum_nspix.end(), csum_nspix_host.begin());
+        
+        // Set batch-specific nspix values
+        nspix = nspix_host[batch_idx];
+        prev_nspix = prev_nspix_host[batch_idx];
+        
+        // Calculate superpixel offset for this batch
+        spix_offset = (batch_idx == 0) ? 0 : csum_nspix_host[batch_idx];
+        
+        // Extract superpixel-level data for this batch
+        if (nspix > 0) {
+            int spix_start = spix_offset;
+            int spix_end = spix_start + nspix;
+            
+            // Check if superpixel data arrays are large enough
+            if (device_data.mu_app.size() >= spix_end) {
+                mu_app.resize(nspix);
+                thrust::copy(device_data.mu_app.begin() + spix_start,
+                           device_data.mu_app.begin() + spix_end,
+                           reinterpret_cast<float3*>(mu_app.data()));
+            }
+            
+            if (device_data.mu_pos.size() >= spix_end) {
+                mu_pos.resize(nspix);
+                thrust::copy(device_data.mu_pos.begin() + spix_start,
+                           device_data.mu_pos.begin() + spix_end,
+                           reinterpret_cast<double3*>(mu_pos.data()));
+            }
+            
+            if (device_data.var_pos.size() >= spix_end) {
+                var_pos.resize(nspix);
+                thrust::copy(device_data.var_pos.begin() + spix_start,
+                           device_data.var_pos.begin() + spix_end,
+                           reinterpret_cast<double3*>(var_pos.data()));
+            }
+            
+            if (device_data.cov_pos.size() >= spix_end) {
+                cov_pos.resize(nspix);
+                thrust::copy(device_data.cov_pos.begin() + spix_start,
+                           device_data.cov_pos.begin() + spix_end,
+                           reinterpret_cast<double3*>(cov_pos.data()));
+            }
+        }
+    }
+    
+    // Default constructor
+    SuperpixelParams3dHost() : nspix(0), prev_nspix(0), spix_offset(0) {}
+    
+    // // Helper method to get the global superpixel ID range for this batch
+    // std::pair<uint32_t, uint32_t> get_spix_range() const {
+    //     return {spix_offset, spix_offset + nspix};
+    // }
+    
+    // // Helper method to convert local superpixel ID to global ID
+    // uint32_t local_to_global_spix_id(uint32_t local_id) const {
+    //     return spix_offset + local_id;
+    // }
+    
+    // // Helper method to convert global superpixel ID to local ID (returns -1 if not in this batch)
+    // int global_to_local_spix_id(uint32_t global_id) const {
+    //     if (global_id >= spix_offset && global_id < spix_offset + nspix) {
+    //         return global_id - spix_offset;
+    //     }
+    //     return -1;
+    // }
+};
+
+
 struct SpixMetaData {
     // Algorithm parameters
     int niters;
@@ -170,92 +266,6 @@ struct SpixMetaData {
         , nspix_buffer_mult(nspix_buffer_mult)
     {}
 };
-
-
-// struct PointCloudData {
-//     // Core data arrays
-//     float3* ftrs;           // Features
-//     float3* pos;            // Positions
-//     uint32_t* faces;        // Faces
-//     uint8_t* gcolors;       // Global colors
-//     uint32_t* csr_edges;    // CSR format edges
-//     uint32_t* csr_eptr;     // CSR edge pointers
-//     uint8_t* bids;          // Batch IDs
-//     int* ptr;               // Pointer array
-//     int* eptr;              // Pointer to index for batch slicing
-//     int* fptr;
-//     float* dim_sizes;       // Dimension sizes
-    
-//     // Scalar parameters
-//     uint8_t gchrome;        // Global chrome value
-//     int B; // batchsize
-//     int V; // num vertex
-//     int E; // num unique edges
-//     int F; // num faces
-
-//     // -- get host vectors for file io --
-
-//     thrust::host_vector<float> ftrs_host() {
-//       thrust::host_vector<float> on_cpu(3*this->V);
-//       thrust::device_ptr<float> dev_ptr(reinterpret_cast<float*>(this->ftrs));
-//       thrust::copy(dev_ptr, dev_ptr + 3*this->V, on_cpu.begin());
-//       return on_cpu;
-//     }
-
-//     thrust::host_vector<float> pos_host() {
-//       thrust::host_vector<float> on_cpu(3*this->V);
-//       thrust::device_ptr<float> dev_ptr(reinterpret_cast<float*>(this->pos));
-//       thrust::copy(dev_ptr, dev_ptr + 3*this->V, on_cpu.begin());
-//       return on_cpu;
-//     }
-
-//     thrust::host_vector<uint8_t> gcolors_host() {
-//       thrust::host_vector<uint8_t> on_cpu(this->V);
-//       thrust::device_ptr<uint8_t> dev_ptr(this->gcolors);
-//       thrust::copy(dev_ptr, dev_ptr + this->V, on_cpu.begin());
-//       return on_cpu;
-//     }
-
-//     thrust::host_vector<int> vptr_host() {
-//       thrust::host_vector<int> on_cpu(this->B+1);
-//       thrust::device_ptr<int> dev_ptr(this->ptr);
-//       thrust::copy(dev_ptr, dev_ptr + this->B+1, on_cpu.begin());
-//       return on_cpu;
-//     }
-
-
-
-//     //  PointCloudData data{ftrs, pos, gcolors, csr_edges, csr_eptr, 
-//     //                     bids, vptr, eptr, dim_sizes, gchrome, 
-//     //                     scene_files_b.size(), V_total, E_total};
-//     // if (logging==1){
-
-//     // Constructor
-//     PointCloudData(float3* ftrs, float3* pos, uint8_t* gcolors,
-//                    uint32_t* csr_edges, uint32_t* csr_eptr, 
-//                    uint8_t* bids, int* ptr, int* eptr, float* dim_sizes,
-//                    uint32_t* faces, int* fptr,
-//                    uint8_t gchrome, int B, int V, int E, int F)
-//         : ftrs(ftrs)
-//         , pos(pos)
-//         , gcolors(gcolors)
-//         , csr_edges(csr_edges)
-//         , csr_eptr(csr_eptr)
-//         , bids(bids)
-//         , ptr(ptr)
-//         , eptr(eptr)
-//         , dim_sizes(dim_sizes)
-//         , faces(faces)
-//         , fptr(fptr)
-//         , gchrome(gchrome)
-//         , B(B)
-//         , V(V)
-//         , E(E)
-//         , F(F)
-//     {
-//     }
-// };
-
 
 
 

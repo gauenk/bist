@@ -655,134 +655,136 @@ bool write_spix(const std::vector<std::filesystem::path>& scene_files,
 }
 
 
-// bool ScanNetScene::write_spix_ply_with_fn(const std::filesystem::path& scene_path, 
-//                                   const std::filesystem::path& output_root,
-//                                   thrust::host_vector<float3>& ftrs, 
-//                                   thrust::host_vector<double3>& pos,
-//                                   thrust::host_vector<double3>& var, 
-//                                   thrust::host_vector<double3>& cov, int nspix) {
+bool ScanNetScene::write_spix_ply_with_fn(const std::filesystem::path& scene_path, 
+                                  const std::filesystem::path& output_root,
+                                  const SuperpixelParams3dHost& data){
+                                //   thrust::host_vector<float3>& ftrs, 
+                                //   thrust::host_vector<double3>& pos,
+                                //   thrust::host_vector<double3>& var, 
+                                //   thrust::host_vector<double3>& cov, int nspix) {
 
-//     // -- helper --
-//     std::string line;
+    // -- helper --
+    std::string line;
 
-//     // -- make dir if needed --
-//     std::string scene_name = scene_path.filename().string();
-//     std::filesystem::path write_path = output_root / scene_name;
-//     if (!std::filesystem::exists(write_path)) {
-//         std::filesystem::create_directories(write_path);
-//     }
-//     // -- get filenames --
-//     std::filesystem::path ply_file = write_path / (scene_name + "_spix.ply");
-//     std::cout << ply_file << std::endl;
+    // -- make dir if needed --
+    std::string scene_name = scene_path.filename().string();
+    std::filesystem::path write_path = output_root / scene_name;
+    if (!std::filesystem::exists(write_path)) {
+        std::filesystem::create_directories(write_path);
+    }
+    // -- get filenames --
+    std::filesystem::path ply_file = write_path / (scene_name + "_spix.ply");
+    std::cout << ply_file << std::endl;
     
-//     // thrust::host_vector<uint32_t> border_edges(0); // spoof for now.
-//     // thrust::host_vector<uint32_t> border_ptr(0); // spoof for now.
-//     return this->write_spix_ply(ply_file,ftrs,pos,var,cov,nspix);
+    // thrust::host_vector<uint32_t> border_edges(0); // spoof for now.
+    // thrust::host_vector<uint32_t> border_ptr(0); // spoof for now.
+    // return this->write_spix_ply(ply_file,ftrs,pos,var,cov,nspix);
+    return this->write_spix_ply(ply_file,data);
 
-// }
+}
 
 
-// bool ScanNetScene::write_spix_ply(const std::filesystem::path& ply_file,
-//                                   thrust::host_vector<float3>& ftrs, 
-//                                   thrust::host_vector<double3>& pos,
-//                                   thrust::host_vector<double3>& var, 
-//                                   thrust::host_vector<double3>& cov, 
-//                                 //   thrust::host_vector<uint32_t>& border_edges,
-//                                 //   thrust::host_vector<uint32_t>& border_ptr,
-//                                   int nspix) {
+bool ScanNetScene::write_spix_ply(const std::filesystem::path& ply_file, const SuperpixelParams3dHost& data){
+                                //   thrust::host_vector<float3>& ftrs, 
+                                //   thrust::host_vector<double3>& pos,
+                                //   thrust::host_vector<double3>& var, 
+                                //   thrust::host_vector<double3>& cov, 
+                                // //   thrust::host_vector<uint32_t>& border_edges,
+                                // //   thrust::host_vector<uint32_t>& border_ptr,
+                                //   int nspix) {
     
-//     // -- delete existing file if it exists --
-//     if (std::filesystem::exists(ply_file)) {
-//         std::filesystem::remove(ply_file);
-//     }
+    // -- delete existing file if it exists --
+    if (std::filesystem::exists(ply_file)) {
+        std::filesystem::remove(ply_file);
+    }
 
-//     // -- open file for writing --
-//     std::ofstream file(ply_file.string(), std::ios::binary);
-//     if (!file.is_open()) {
-//         std::cerr << "Can not open: " << ply_file.string() << std::endl;
-//         return false;
-//     }
+    // -- open file for writing --
+    std::ofstream file(ply_file.string(), std::ios::binary);
+    if (!file.is_open()) {
+        std::cerr << "Can not open: " << ply_file.string() << std::endl;
+        return false;
+    }
 
-//     // -- write PLY header --
-//     std::string header = "ply\n";
-//     header += "format binary_little_endian 1.0\n";
-//     header += "comment MLIB generated\n";
-//     header += "element vertex " + std::to_string(nspix) + "\n";
-//     header += "property float x\n";
-//     header += "property float y\n";
-//     header += "property float z\n";
-//     header += "property float var_x\n";
-//     header += "property float var_y\n";
-//     header += "property float var_z\n";
-//     header += "property float cov_xy\n";
-//     header += "property float cov_xz\n";
-//     header += "property float cov_yz\n";
-//     header += "property uchar red\n";
-//     header += "property uchar green\n";
-//     header += "property uchar blue\n";
-//     header += "property uchar alpha\n";
-//     // if (border_edges.size() > 0){
-//     //     header += "element edge " + std::to_string(border_edges.size()/2) + '\n';
-//     //     header += "property int vertex1\n";
-//     //     header += "property int vertex2\n";
-//     //     // header += "element face " + std::to_string(border_edges.size()/2) + "\n";
-//     //     // header += "property list uchar int vertex_indices\n";
-//     // }
-//     header += "end_header\n";
-//     file.write(header.c_str(), header.length());
+    // -- write PLY header --
+    std::string header = "ply\n";
+    header += "format binary_little_endian 1.0\n";
+    header += "comment MLIB generated\n";
+    header += "element vertex " + std::to_string(data.nspix) + "\n";
+    header += "property float x\n";
+    header += "property float y\n";
+    header += "property float z\n";
+    header += "property float var_x\n";
+    header += "property float var_y\n";
+    header += "property float var_z\n";
+    header += "property float cov_xy\n";
+    header += "property float cov_xz\n";
+    header += "property float cov_yz\n";
+    header += "property uchar red\n";
+    header += "property uchar green\n";
+    header += "property uchar blue\n";
+    header += "property uchar alpha\n";
+    // if (border_edges.size() > 0){
+    //     header += "element edge " + std::to_string(border_edges.size()/2) + '\n';
+    //     header += "property int vertex1\n";
+    //     header += "property int vertex2\n";
+    //     // header += "element face " + std::to_string(border_edges.size()/2) + "\n";
+    //     // header += "property list uchar int vertex_indices\n";
+    // }
+    header += "end_header\n";
+    file.write(header.c_str(), header.length());
 
-//     // -- write data --
-//     for (int i = 0; i < nspix; ++i) {
+    // -- write data --
+    for (int i = 0; i < data.nspix; ++i) {
         
-//         // -- init --
-//         unsigned char r, g, b, alpha;
-//         uint32_t label;
-//         uint8_t gcolor_id;
+        // -- init --
+        unsigned char r, g, b, alpha;
+        uint32_t label;
+        uint8_t gcolor_id;
 
-//         // -- unpack --
-//         float3 _ftrs = ftrs[i];
-//         double3 _pos = pos[i];
-//         double3 _var = var[i];
-//         double3 _cov = cov[i];
-//         float x = _pos.x;
-//         float y = _pos.y;
-//         float z = _pos.z;
-//         float var_x = _var.x;
-//         float var_y = _var.y;
-//         float var_z = _var.z;
-//         float cov_x = _cov.x;
-//         float cov_y = _cov.y;
-//         float cov_z = _cov.z;
+        // -- unpack --
+        float3 _ftrs = data.mu_app[i];
+        double3 _pos = data.mu_pos[i];
+        double3 _var = data.var_pos[i];
+        double3 _cov = data.cov_pos[i];
+        float x = _pos.x;
+        float y = _pos.y;
+        float z = _pos.z;
+        float var_x = _var.x;
+        float var_y = _var.y;
+        float var_z = _var.z;
+        float cov_x = _cov.x;
+        float cov_y = _cov.y;
+        float cov_z = _cov.z;
 
-//         r = static_cast<unsigned char>(_ftrs.x * 255.0f);
-//         g = static_cast<unsigned char>(_ftrs.y * 255.0f);
-//         b = static_cast<unsigned char>(_ftrs.z * 255.0f);
-//         alpha = 255;
-//         //printf("label: %ld\n",label);
-//         //printf("x,y,z r,g,b: %2.2f %2.2f %2.2f %2.2f %2.2f %2.2f\n",x,y,z,ftrs[3*i+0],ftrs[3*i+1] ,ftrs[3*i+2] );
-
-
-//         // -- write --
-//         file.write(reinterpret_cast<const char*>(&x), sizeof(float));
-//         file.write(reinterpret_cast<const char*>(&y), sizeof(float));
-//         file.write(reinterpret_cast<const char*>(&z), sizeof(float));
-//         file.write(reinterpret_cast<const char*>(&var_x), sizeof(float));
-//         file.write(reinterpret_cast<const char*>(&var_y), sizeof(float));
-//         file.write(reinterpret_cast<const char*>(&var_z), sizeof(float));
-//         file.write(reinterpret_cast<const char*>(&cov_x), sizeof(float));
-//         file.write(reinterpret_cast<const char*>(&cov_y), sizeof(float));
-//         file.write(reinterpret_cast<const char*>(&cov_z), sizeof(float));
-//         file.write(reinterpret_cast<const char*>(&r), sizeof(unsigned char));
-//         file.write(reinterpret_cast<const char*>(&g), sizeof(unsigned char));
-//         file.write(reinterpret_cast<const char*>(&b), sizeof(unsigned char));
-//         file.write(reinterpret_cast<const char*>(&alpha), sizeof(unsigned char));
-//     }
+        r = static_cast<unsigned char>(_ftrs.x * 255.0f);
+        g = static_cast<unsigned char>(_ftrs.y * 255.0f);
+        b = static_cast<unsigned char>(_ftrs.z * 255.0f);
+        alpha = 255;
+        //printf("label: %ld\n",label);
+        //printf("x,y,z r,g,b: %2.2f %2.2f %2.2f %2.2f %2.2f %2.2f\n",x,y,z,ftrs[3*i+0],ftrs[3*i+1] ,ftrs[3*i+2] );
 
 
-//     file.close();
-//     return true;
+        // -- write --
+        file.write(reinterpret_cast<const char*>(&x), sizeof(float));
+        file.write(reinterpret_cast<const char*>(&y), sizeof(float));
+        file.write(reinterpret_cast<const char*>(&z), sizeof(float));
+        file.write(reinterpret_cast<const char*>(&var_x), sizeof(float));
+        file.write(reinterpret_cast<const char*>(&var_y), sizeof(float));
+        file.write(reinterpret_cast<const char*>(&var_z), sizeof(float));
+        file.write(reinterpret_cast<const char*>(&cov_x), sizeof(float));
+        file.write(reinterpret_cast<const char*>(&cov_y), sizeof(float));
+        file.write(reinterpret_cast<const char*>(&cov_z), sizeof(float));
+        file.write(reinterpret_cast<const char*>(&r), sizeof(unsigned char));
+        file.write(reinterpret_cast<const char*>(&g), sizeof(unsigned char));
+        file.write(reinterpret_cast<const char*>(&b), sizeof(unsigned char));
+        file.write(reinterpret_cast<const char*>(&alpha), sizeof(unsigned char));
+    }
 
-// };
+
+    file.close();
+    return true;
+
+};
 
 
 
