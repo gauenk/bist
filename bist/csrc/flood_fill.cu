@@ -47,11 +47,19 @@ void flood_fill(PointCloudData& data, spix_params* params, uint32_t* spix, uint3
     thrust::device_vector<bool> valid_label(data.V, 0);
     bool* valid_label_ptr = thrust::raw_pointer_cast(valid_label.data());
     uint32_t count = thrust::count(valid_label.begin(), valid_label.end(), true);
+    int iter = 0;
+    int count_prev = -1;
     while(count < data.V){
         // -- propogate seed value to all connected neighbors --
         propogate_seed<<<VertexBlocks,NumThreads>>>(spix,valid_label_ptr,data.csr_edges_ptr(),data.csr_eptr_ptr(),data.V);
         count = thrust::count(valid_label.begin(), valid_label.end(), true);
-        // printf("count: %d\n",count);
+        if (count == count_prev){
+            printf("count: %d %d\n",count,data.V);
+            printf("Something is wrong with your meshgrid -- its not path-connected.\n");
+            exit(1);
+        }
+        count_prev = count;
+        iter++;
     }
 
     // -- view --

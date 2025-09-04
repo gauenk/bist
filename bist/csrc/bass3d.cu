@@ -124,6 +124,10 @@ SuperpixelParams3d run_bass3d(PointCloudData& data, SpixMetaData& args, Logger* 
     const int helper_size = sizeof(spix_helper);
     spix_params* sp_params=(spix_params*)easy_allocate(nspix_max,sparam_size);
     spix_helper* sp_helper=(spix_helper*)easy_allocate(nspix_max,helper_size);
+  
+    gpuErrchk( cudaPeekAtLastError() );
+    gpuErrchk( cudaDeviceSynchronize() );
+
 
     // -- init sp_params --
     mark_active_init(sp_params,params.spix_ptr(),data.vertex_batch_ids_ptr(),params.csum_nspix_ptr(),data.V);

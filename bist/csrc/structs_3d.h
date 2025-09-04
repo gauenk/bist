@@ -274,6 +274,7 @@ struct PointCloudData {
     thrust::device_vector<float3> ftrs;
     thrust::device_vector<float3> pos;
     thrust::device_vector<uint32_t> faces;
+    thrust::device_vector<uint32_t> faces_eptr;
     thrust::device_vector<uint32_t> edges;
     thrust::device_vector<uint32_t> csr_edges;
     thrust::device_vector<uint32_t> csr_eptr;
@@ -295,6 +296,7 @@ struct PointCloudData {
     float3* ftrs_ptr() { return thrust::raw_pointer_cast(ftrs.data()); }
     float3* pos_ptr() { return thrust::raw_pointer_cast(pos.data()); }
     uint32_t* faces_ptr() { return thrust::raw_pointer_cast(faces.data()); }
+    uint32_t* faces_eptr_ptr() { return thrust::raw_pointer_cast(faces_eptr.data()); }
     uint32_t* edges_ptr() { return thrust::raw_pointer_cast(edges.data()); }
     uint32_t* csr_edges_ptr() { return thrust::raw_pointer_cast(csr_edges.data()); }
     uint32_t* csr_eptr_ptr() { return thrust::raw_pointer_cast(csr_eptr.data()); }
@@ -326,6 +328,12 @@ struct PointCloudData {
     thrust::host_vector<uint32_t> faces_host() const {
         thrust::host_vector<uint32_t> result(faces.size());
         thrust::copy(faces.begin(), faces.end(), result.begin());
+        return result;
+    }
+
+    thrust::host_vector<uint32_t> faces_eptr_host() const {
+        thrust::host_vector<uint32_t> result(faces_eptr.size());
+        thrust::copy(faces_eptr.begin(), faces_eptr.end(), result.begin());
         return result;
     }
     
@@ -466,13 +474,18 @@ struct PointCloudData {
 };
 
 
-
+// Warning; batching problems. the idea of "csr_edges" uses V+1 elements but the vptr just gives "num of vertices in batch".
+// but maybe okay if "_start" is the "+1" of the previous? Or we know to write "+1"? weird..
+// 
+// After a bit of thought, there is not problem. vptr[bx] is the STARTING index of batch "bx"... so effectively it is already "V+1"
+//
 
 struct PointCloudDataHost {
     // Host data arrays
     std::vector<float3> ftrs;
     std::vector<float3> pos;
     std::vector<uint32_t> faces;
+    std::vector<uint32_t> faces_eptr;
     std::vector<uint32_t> edges;
     std::vector<uint32_t> csr_edges;
     std::vector<uint32_t> csr_eptr;
@@ -567,12 +580,22 @@ struct PointCloudDataHost {
             }
         }
         
-        // Extract face data
-        if (F > 0) {
-            faces.resize(F);
-            thrust::copy(device_data.faces.begin() + f_start,
-                        device_data.faces.begin() + f_end,
+        // Extract face data [warning; batching problems with extraction; "F+1" vs "F" for each batch...]
+        if ((F > 0) && (device_data.faces_eptr.size()>0)) {
+            faces_eptr.resize(F+1);
+            printf("%d %d\n",F,device_data.faces_eptr.size());
+            thrust::copy(device_data.faces_eptr.begin() + f_start,
+                        device_data.faces_eptr.begin() + F+1,
+                        faces_eptr.begin());
+            uint32_t start = faces_eptr[0];
+            uint32_t end = faces_eptr[F];
+            uint32_t size = end - start;
+            //printf("start,end: %d %d\n",start,end);
+            faces.resize(size);
+            thrust::copy(device_data.faces.begin() + start,
+                        device_data.faces.begin() + end,
                         faces.begin());
+
         }
         
         // Extract CSR edges if they exist

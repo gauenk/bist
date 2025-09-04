@@ -215,11 +215,9 @@ int main(int argc, char **argv) {
             data.gcolors = std::move(gcolors);
             data.gchrome = gchrome;
 
-            /**********************************************
-             * 
-             *      Get the Face-Dual Data
-             * 
-             ***********************************************/
+            // -- get face-dual mesh --
+            PointCloudData dual = create_dual_mesh(data);
+            //PointCloudData dual = data.copy();
 
 
             /**********************************************
@@ -263,6 +261,7 @@ int main(int argc, char **argv) {
             **********************************************/
 
             // -- keep edges only --
+            data.F = 0;
             PointCloudData border_data = data.copy();
             border_data.labels = params.spix;
             border_data.border = params.border;
@@ -290,12 +289,14 @@ int main(int argc, char **argv) {
                 }
                 std::filesystem::path mesh_fname = write_path / (scene_name + "_vh_clean_2.ply");
                 std::filesystem::path border_fname = write_path / (scene_name + "_border.ply");
+                std::filesystem::path dual_fname = write_path / (scene_name + "_dual.ply");
                 std::filesystem::path spix_fname = write_path / (scene_name + "_spix.ply");
 
 
                 // -- get batch data --
                 PointCloudDataHost host_data(data,batch_index);
                 PointCloudDataHost host_border_data(border_data,batch_index);
+                PointCloudDataHost host_dual(dual,batch_index);
                 SuperpixelParams3dHost host_spix(params,batch_index);
 
                 // -- write mesh scene --
@@ -305,6 +306,11 @@ int main(int argc, char **argv) {
         
                 // -- write border scene --
                 if(!scene.write_ply(border_fname,host_border_data)){
+                    exit(1);
+                }
+
+                // -- write dual scene --
+                if(!scene.write_ply(dual_fname,host_dual)){
                     exit(1);
                 }
 

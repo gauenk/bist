@@ -50,7 +50,7 @@ __host__ void update_seg(spix_params* aos_params, spix_helper* sp_helper, PointC
     int threads_per_block = WARPS_PER_BLOCK * THREADS_PER_WARP;
     int ArtNumThreads(threads_per_block);
     int ArtNumBlocks((data.V + WARPS_PER_BLOCK - 1) / WARPS_PER_BLOCK);
-    //cudaMemset(is_simple_point, 1, data.V*sizeof(bool));
+    cudaMemset(is_simple_point, 1, data.V*sizeof(bool));
         
     // // -- [dev only!] --
     // cudaMemset(border, 0, data.V*sizeof(bool));
@@ -67,7 +67,7 @@ __host__ void update_seg(spix_params* aos_params, spix_helper* sp_helper, PointC
 
         for (int graph_color_index=0; graph_color_index < data.gchrome; graph_color_index++){
 
-            approximate_articulation_points<<<ArtNumBlocks,ArtNumThreads>>>(spix,data.csr_edges_ptr(),data.csr_eptr_ptr(),is_simple_point,neigh_neq,data.V);
+            //approximate_articulation_points<<<ArtNumBlocks,ArtNumThreads>>>(spix,data.csr_edges_ptr(),data.csr_eptr_ptr(),is_simple_point,neigh_neq,data.V);
             // gpuErrchk( cudaPeekAtLastError() );
             // gpuErrchk( cudaDeviceSynchronize() );
             // printf("step.\n");

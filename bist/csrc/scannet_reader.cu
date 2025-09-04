@@ -137,7 +137,7 @@ PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files)
 
     // Create and return result
     const int total_edges = edge_ptr[batch_size];
-    printf("Total edges: %d (edge batch IDs: %zu)\n", total_edges, edge_batch_ids.size());
+    printf("Total edges: %d (edge batch ID size: %zu)\n", total_edges, edge_batch_ids.size());
     
     // Note: These appear to be unused in the original code
     thrust::device_vector<uint8_t> unused_gcolors;
@@ -162,59 +162,7 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
     // -- sync before io --
     cudaDeviceSynchronize();
 
-    // // -- read nnodes --
-    // int nbatch = scene_files.size();
-    // int nnodes;
-    // cudaMemcpy(&nnodes,&ptr_cu[nbatch],sizeof(int),cudaMemcpyDeviceToHost);
-    // int nedges;
-    // cudaMemcpy(&nedges,&eptr_cu[nbatch],sizeof(int),cudaMemcpyDeviceToHost);
-    // printf("nnodes: %d\n",nnodes);
-    // printf("nedges: %d\n",nedges);
-    
-    // // -- allocate --
-    // float* ftrs = (float*)malloc(3*nnodes*sizeof(float));
-    // float* pos = (float*)malloc(3*nnodes*sizeof(float));
-    // uint32_t* edges = (uint32_t*)malloc(2*nedges*sizeof(uint32_t));
-    // //float* dim_sizes = (float*)malloc(6*nbatch,sizeof(float));
-    // int* ptr = (int*)malloc((nbatch+1)*sizeof(int));
-    // int* eptr = (int*)malloc((nbatch+1)*sizeof(int));
-    // uint8_t* gcolor = (uint8_t*)malloc(nnodes*sizeof(uint8_t));
-    // uint32_t* labels = nullptr;
-    // if (labels_cu != nullptr){
-    //     labels = (uint32_t*)malloc(nnodes*sizeof(uint32_t));
-    // }
-
-    // // -- read to cpu --
-    // cudaMemcpy(ftrs,ftrs_cu,nnodes*sizeof(float3),cudaMemcpyDeviceToHost);
-    // cudaMemcpy(pos,pos_cu,nnodes*sizeof(float3),cudaMemcpyDeviceToHost);
-    // cudaMemcpy(edges,edges_cu,2*nedges*sizeof(uint32_t),cudaMemcpyDeviceToHost);
-    // //cudaMemcpy(dim_sizes,dim_sizes_cu,2*nbatch*sizeof(float3),cudaMemcpyDeviceToHost);
-    // cudaMemcpy(ptr,ptr_cu,(nbatch+1)*sizeof(int),cudaMemcpyDeviceToHost);
-    // cudaMemcpy(eptr,eptr_cu,(nbatch+1)*sizeof(int),cudaMemcpyDeviceToHost);
-    // cudaMemcpy(gcolor,gcolor_cu,nnodes*sizeof(uint8_t),cudaMemcpyDeviceToHost);
-    // if (labels_cu != nullptr){
-    //     cudaMemcpy(labels,labels_cu,nnodes*sizeof(uint32_t),cudaMemcpyDeviceToHost);
-    // }
-    // cudaDeviceSynchronize();
-    // Second pass: append data
-    // float* ftrs_b = ftrs;
-    // float* pos_b = pos;
-    // int* ptr_b = ptr;
     for(int batch_index=0; batch_index < data.B; batch_index++){
-    //for (const auto& scene_file : scene_files) {
-        
-        // // -- get pointers --
-        // float3* ftrs_b = &ftrs[3*ptr[ix]];
-        // float3* pos_b = &pos[3*ptr[ix]];
-        // uint32_t* edges_b = &edges[2*eptr[ix]];
-        // uint8_t*  gcolor_b = &gcolor[ptr[ix]];
-        // uint32_t* labels_b = (labels != nullptr) ? &labels[ptr[ix]] : nullptr;
-        // int nnodes = ptr[ix+1] - ptr[ix];
-        // int nedges = eptr[ix+1] - eptr[ix];
-        // printf("nedges: %d\n",nedges);
-        // if (labels!=nullptr){
-        //     printf("labels_b: %ld\n",labels_b[0]);
-        // }
 
         // -- write original data (for dev) --
         auto& scene_file = scene_files[batch_index];
@@ -229,20 +177,8 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
             exit(1);
         }
 
-        // ix += 1;
     }
 
-
-    // free(ftrs);
-    // free(pos);
-    // free(edges);
-    // free(ptr);
-    // free(eptr);
-    // free(gcolor);
-    // if (labels != nullptr){
-    //     free(labels);
-    // }
-    //free(dim_sizes);
     return 0;
 }
 
@@ -440,6 +376,14 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
                 e0[_ei] = std::min(a, b);
                 e1[_ei] = std::max(a, b);
                 _ei += 1;
+                
+                // -- view --
+                bool conda = (a == 295906) && (b == 296744);
+                bool condb = (b == 295906) && (a == 296744);
+                if (conda || condb){
+                    printf("face_index, v0, v1: %d %d %d\n",i, a, b);
+                }
+
             }
         }
 
@@ -549,9 +493,15 @@ bool ScanNetScene::write_ply(const std::filesystem::path& ply_file, PointCloudDa
     if (!data.labels.empty()){
         header += "property uint label\n";
     }
-    header += "element edge " + std::to_string(data.E) + '\n';
-    header += "property int vertex1\n";
-    header += "property int vertex2\n";
+    // if (!data.edges.empty()){
+    //     header += "element edge " + std::to_string(data.E) + '\n';
+    //     header += "property int vertex1\n";
+    //     header += "property int vertex2\n";
+    // }
+    if (!data.faces.empty()){
+        header += "element face " + std::to_string(data.F) + "\n";
+        header += "property list uchar int vertex_indices\n";
+    }
     header += "end_header\n";
     file.write(header.c_str(), header.length());
 
@@ -600,18 +550,35 @@ bool ScanNetScene::write_ply(const std::filesystem::path& ply_file, PointCloudDa
 
     }
 
-    for (int i = 0; i < data.E; ++i){
-        //unsigned char len = 2;
-        int e0 = data.edges[2*i+0]; // ??
-        int e1 = data.edges[2*i+1];
-        // if ((i % 10000 == 0) || (i < 10) || (i > (data.E-10))) {        
-        //     printf("e0, e1: %d %d\n",e0,e1);
-        // }
-        //file.write(reinterpret_cast<const char*>(&len), sizeof(unsigned char));
-        file.write(reinterpret_cast<const char*>(&e0), sizeof(int));
-        file.write(reinterpret_cast<const char*>(&e1), sizeof(int));
-    }
+    // if (!data.edges.empty()){
+    //     for (int i = 0; i < data.E; ++i){
+    //         //unsigned char len = 2;
+    //         int e0 = data.edges[2*i+0]; // ??
+    //         int e1 = data.edges[2*i+1];
+    //         // if ((i % 10000 == 0) || (i < 10) || (i > (data.E-10))) {        
+    //         //     printf("e0, e1: %d %d\n",e0,e1);
+    //         // }
+    //         //file.write(reinterpret_cast<const char*>(&len), sizeof(unsigned char));
+    //         file.write(reinterpret_cast<const char*>(&e0), sizeof(int));
+    //         file.write(reinterpret_cast<const char*>(&e1), sizeof(int));
+    //     }
+    // }  
     
+    if (!data.faces.empty()){
+        for (int face = 0; face < data.F; ++face){
+            int start = data.faces_eptr[face];
+            int end   = data.faces_eptr[face+1];
+            unsigned char num = end - start;
+            //if (num == 0){ continue; }
+            file.write(reinterpret_cast<const char*>(&num), sizeof(unsigned char));
+            for (int index = start; index < end; index++){
+                int v = data.faces[index];
+                file.write(reinterpret_cast<const char*>(&v), sizeof(int));
+            }
+        }
+    }  
+    
+
     file.close();
     return true;
 
