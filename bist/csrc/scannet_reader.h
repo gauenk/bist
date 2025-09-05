@@ -17,6 +17,7 @@ struct ScanNetScene {
     std::vector<uint32_t> e0;
     std::vector<uint32_t> e1;
     std::vector<uint32_t> faces;
+    std::vector<uint32_t> faces_eptr;
     int size;                // Number of points
     int nfaces; // number of pairs
     float xmin, xmax, ymin, ymax, zmin, zmax;
@@ -25,7 +26,8 @@ struct ScanNetScene {
     bool read_ply(const std::filesystem::path& scene_path);
     bool write_ply_with_fn(const std::filesystem::path& scene_path,
                    const std::filesystem::path& output_root,  PointCloudDataHost& data);
-    bool write_ply(const std::filesystem::path& ply_file, PointCloudDataHost& data);
+    bool write_ply(const std::filesystem::path& ply_file, PointCloudDataHost& data, 
+                   bool write_edges=true, bool write_faces=true);
  
     bool write_spix_ply_with_fn(const std::filesystem::path& scene_path, 
                         const std::filesystem::path& output_root, const SuperpixelParams3dHost& data);

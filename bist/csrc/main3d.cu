@@ -218,6 +218,14 @@ int main(int argc, char **argv) {
             // -- get face-dual mesh --
             PointCloudData dual = create_dual_mesh(data);
             //PointCloudData dual = data.copy();
+            {            
+                uint8_t gchrome;
+                thrust::device_vector<uint8_t> gcolors;
+                std::tie(gcolors,gchrome) = get_graph_coloring(dual.csr_edges_ptr(), dual.csr_eptr_ptr(), dual.V);
+                //printf("graph chromaticity: %d\n",gchrome);
+                dual.gcolors = std::move(gcolors);
+                dual.gchrome = gchrome;
+            }
 
 
             /**********************************************
@@ -238,8 +246,9 @@ int main(int argc, char **argv) {
             start = clock();
 
             // -- run segmentation --
-            SuperpixelParams3d params = run_bass3d(data, args, logger);
-            data.labels = params.spix;
+            SuperpixelParams3d params = run_bass3d(dual, args, logger);
+            //data.labels = params.spix;
+            dual.labels = params.spix;
 
             // -- benchmarking/tracking --
             niters_ave += niters;
@@ -261,13 +270,14 @@ int main(int argc, char **argv) {
             **********************************************/
 
             // -- keep edges only --
-            data.F = 0;
-            PointCloudData border_data = data.copy();
-            border_data.labels = params.spix;
-            border_data.border = params.border;
-            // cudaMemset(border_data.border_ptr(), 0, border_data.V*sizeof(bool));
-            // set_border(border_data.labels_ptr(), border_data.border_ptr(), border_data.csr_edges_ptr(),border_data.csr_eptr_ptr(),border_data.V);
-            filter_to_border_edges(border_data);
+            //dual.F = 0;
+            // PointCloudData border_data = dual.copy();
+            // border_data.labels = params.spix;
+            // border_data.border = params.border;
+            // // cudaMemset(border_data.border_ptr(), 0, border_data.V*sizeof(bool));
+            // // set_border(border_data.labels_ptr(), border_data.border_ptr(), border_data.csr_edges_ptr(),border_data.csr_eptr_ptr(),border_data.V);
+            // filter_to_border_edges(border_data);
+            PointCloudData border_data = get_border_data(data,dual,params,params.nspix_sum);
 
 
             // -- write and free --
@@ -290,6 +300,7 @@ int main(int argc, char **argv) {
                 std::filesystem::path mesh_fname = write_path / (scene_name + "_vh_clean_2.ply");
                 std::filesystem::path border_fname = write_path / (scene_name + "_border.ply");
                 std::filesystem::path dual_fname = write_path / (scene_name + "_dual.ply");
+                std::filesystem::path dual_edge_fname = write_path / (scene_name + "_dual_edges.ply");
                 std::filesystem::path spix_fname = write_path / (scene_name + "_spix.ply");
 
 
@@ -305,7 +316,7 @@ int main(int argc, char **argv) {
                 }
         
                 // -- write border scene --
-                if(!scene.write_ply(border_fname,host_border_data)){
+                if(!scene.write_ply(border_fname,host_border_data,true,false)){
                     exit(1);
                 }
 
@@ -313,6 +324,12 @@ int main(int argc, char **argv) {
                 if(!scene.write_ply(dual_fname,host_dual)){
                     exit(1);
                 }
+
+                // -- write dual scene --
+                if(!scene.write_ply(dual_edge_fname,host_dual,true,false)){
+                    exit(1);
+                }
+
 
                 // -- write spix scene --
                 if(!scene.write_spix_ply(spix_fname,host_spix)){

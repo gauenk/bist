@@ -61,6 +61,9 @@ initial_interpolation(float3* ftrs, float3* pos, uint32_t* dual_faces, uint32_t*
     uint32_t s1_end = csr_eptr[v1+1];
     uint32_t s2 = csr_eptr[v2];
     uint32_t s2_end = csr_eptr[v2+1];
+    // if((s0+i0) >= s0_end){
+    //     printf("v0,face: %d %d | %d %d %d\n",v0,face_index,i0,s0,s0_end);
+    // }
     assert((s0+i0) < s0_end);
     assert((s1+i1) < s1_end);
     assert((s2+i2) < s2_end);
@@ -69,6 +72,43 @@ initial_interpolation(float3* ftrs, float3* pos, uint32_t* dual_faces, uint32_t*
     dual_faces[s2+i2] = face_index;
 
 }
+
+
+// __global__ void
+// initial_faces(uint32_t* dual_faces, uint32_t* face_counts, uint32_t* face_eptr, const uint32_t* faces, uint32_t F){
+
+//     // -- get face index --
+//     uint32_t face_index = threadIdx.x + blockIdx.x * blockDim.x;
+// 	if (face_index>=F) return;
+
+//     // -- unpack triangle --
+//     uint32_t v0 = faces[3*face_index+0];
+//     uint32_t v1 = faces[3*face_index+1];
+//     uint32_t v2 = faces[3*face_index+2];
+
+//     // -- the number of faces that include the particular vertex --
+//     uint32_t i0 = atomicAdd(&face_counts[v0],1);
+//     uint32_t i1 = atomicAdd(&face_counts[v1],1);
+//     uint32_t i2 = atomicAdd(&face_counts[v2],1);
+
+//     // -- gather all the faces for each vertex --
+//     uint32_t s0 = face_eptr[v0];
+//     uint32_t s0_end = face_eptr[v0+1];
+//     uint32_t s1 = face_eptr[v1];
+//     uint32_t s1_end = face_eptr[v1+1];
+//     uint32_t s2 = face_eptr[v2];
+//     uint32_t s2_end = face_eptr[v2+1];
+//     // if((s0+i0) >= s0_end){
+//     //     printf("v0,face: %d %d\n",v0,face_index,s0);
+//     // }
+//     assert((s0+i0) < s0_end);
+//     assert((s1+i1) < s1_end);
+//     assert((s2+i2) < s2_end);
+//     dual_faces[s0+i0] = face_index;
+//     dual_faces[s1+i1] = face_index;
+//     dual_faces[s2+i2] = face_index;
+// }
+	
 
 __global__ void
 place_faces(uint32_t* edges, uint32_t* count, const uint32_t* primal_faces, const uint32_t* csr_edges, const uint32_t* csr_eptr, uint32_t F, uint32_t V){
@@ -460,7 +500,18 @@ PointCloudData create_dual_mesh(PointCloudData& data){
     initial_interpolation<<<FaceBlocks,NumThreads>>>(ftrs_dptr, pos_dptr, faces_dptr, fc_dptr, 
                                                     data.ftrs_ptr(), data.pos_ptr(), data.faces_ptr(), data.csr_eptr_ptr(), data.F);
 
-    
+    // -- assign primal data face_colors for viz --
+    {
+        
+    }
+
+
+    // -- get faces eptr --
+    // thrust::device_vector<uint32_t> vfaces_eptr(data.V+1,0); // (at most) one dual face per primal vertex
+    // thrust::inclusive_scan(face_counts.begin(), face_counts.end(), vfaces_eptr.begin() + 1);
+    // thrust::fill(face_counts.begin(), face_counts.end(), 0);
+    // uint32_t* vfaces_eptr_dptr = thrust::raw_pointer_cast(vfaces_eptr.data());
+    // initial_faces<<<FaceBlocks,NumThreads>>>(faces_dptr, fc_dptr, vfaces_eptr_dptr,  data.faces_ptr(), data.F);
     uint32_t max_face_count = *thrust::max_element(face_counts.begin(), face_counts.end());
     printf("max_face_count: %d\n",max_face_count);
 
@@ -494,8 +545,11 @@ PointCloudData create_dual_mesh(PointCloudData& data){
     bool* flags_dptr = thrust::raw_pointer_cast(flags.data());
     bool* eflags_dptr = thrust::raw_pointer_cast(eflags.data());
     get_face_csr<<<FaceBlocks,NumThreads>>>(csr_edges_dptr, edge_counts_dptr, E_gpu, flags_dptr, eflags_dptr, data.faces_ptr(), e2f_dptr, data.csr_edges_ptr(),  data.csr_eptr_ptr(), data.F);
+    //int eflags_sum = thrust::reduce(eflags.begin(), eflags.end(), 0, thrust::plus<int>());
+    int eflags_sum = thrust::count(eflags.begin(), eflags.end(), true);
     uint32_t E_tmp = numEdges[0];
     //printf("E_tmp: %d\n",E_tmp);
+    printf("eflags_sum: %d\n",eflags_sum);
     assert(E_tmp % 2 == 0); // must be even
     uint32_t E = E_tmp/2;
 
@@ -586,6 +640,11 @@ PointCloudData create_dual_mesh(PointCloudData& data){
     uint32_t F = nfaces[0];
     printf("F,_F: %d,%d\n",F,data.F);
 
+    // -- names for relabeling --
+    thrust::device_vector<uint32_t> vnames(data.V);
+    thrust::sequence(vnames.begin(), vnames.end(), 0);
+    uint32_t* vname_dptr = thrust::raw_pointer_cast(vnames.data());
+
     // -- Compactify Faces IDS --
     {
         void* d_temp = nullptr;
@@ -620,12 +679,17 @@ PointCloudData create_dual_mesh(PointCloudData& data){
             d_temp, temp_bytes,
             fsize_dptr, face_size_flag_dptr,
             d_num_selected, data.V);
+        cub::DeviceSelect::Flagged(
+            d_temp, temp_bytes,
+            vname_dptr, face_size_flag_dptr,
+            d_num_selected, data.V);
         cudaFree(d_temp);
         v2_F = dnum[0];
         assert(v2_F == F);
     }
  
     // -- get offsets per vertex... kind of weird... _nfaces ~= 230k vs F ~= 40k --
+    vnames.resize(F);
     faces_size.resize(F);
     thrust::device_vector<uint32_t> faces_csum(F+1, 0);
     thrust::inclusive_scan(faces_size.begin(), faces_size.end(), faces_csum.begin() + 1);
@@ -645,13 +709,14 @@ PointCloudData create_dual_mesh(PointCloudData& data){
 
     // todo: allow for device_vectors in constructor
     PointCloudData dual{
-        ftrs,pos,faces,edges,
+        ftrs,pos,faces,faces_csum,edges,
         vertex_batch_ids,edge_batch_ids,
         vptr,eptr,fptr,
         data.bounding_boxes,B,V,E,F};
-    dual.faces_eptr = std::move(faces_csum);
+    //dual.faces_eptr = std::move(faces_csum);
     dual.csr_edges = std::move(csr_edges);
     dual.csr_eptr = std::move(csr_eptr);
+    dual.face_vnames = std::move(vnames);
     // dual.edges.resize(0);
     // dual.E = 0;
     return dual;

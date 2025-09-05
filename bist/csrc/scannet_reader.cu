@@ -59,6 +59,8 @@ PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files)
     std::vector<float> bounding_boxes(6 * batch_size, 0.0f);  // xmin,xmax,ymin,ymax,zmin,zmax per scene
     std::vector<uint8_t> vertex_batch_ids(total_vertices, 0);
     std::vector<uint32_t> faces(3 * total_faces, 0);
+    std::vector<uint32_t> faces_eptr(total_faces+1, 0);
+
     
     // Edge data (stored on device)
     thrust::device_vector<uint32_t> all_edges;
@@ -90,6 +92,7 @@ PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files)
         const int scene_face_count = face_ptr[batch_idx + 1] - face_ptr[batch_idx];
         const int face_offset = face_ptr[batch_idx];
         memcpy(&faces[3 * face_offset], scene.faces.data(), 3 * scene_face_count * sizeof(uint32_t));
+        memcpy(&faces_eptr[face_offset], scene.faces_eptr.data(), (scene_face_count+1)* sizeof(uint32_t));
 
         // Extract and append edges
         thrust::device_vector<uint32_t> scene_edges = extract_edges_from_pairs(scene.e0, scene.e1);
@@ -144,11 +147,12 @@ PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files)
     thrust::device_vector<uint32_t> unused_csr_edges;
     thrust::device_vector<uint32_t> unused_csr_eptr;
 
-    return PointCloudData(
-        features, positions, faces, all_edges,
+    PointCloudData data(
+        features, positions, faces, faces_eptr, all_edges,
         vertex_batch_ids, edge_batch_ids, vertex_ptr, edge_ptr, face_ptr,
         bounding_boxes, batch_size, total_vertices, total_edges, total_faces
     );
+    return data;
 }
 
 
@@ -301,6 +305,8 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
     e0.resize(3*face_count); // triangles
     e1.resize(3*face_count);
     faces.resize(3*face_count);
+    faces_eptr.resize(face_count+1);
+
 
     // Initialize bounds
     xmin = ymin = zmin = std::numeric_limits<float>::max();
@@ -353,6 +359,7 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
         }
 
         // -- read faces and extract edges --
+        faces_eptr[face_count] = 3*face_count;
         for (int i = 0; i < face_count; ++i) {
             unsigned char vertex_count_face;
             file.read(reinterpret_cast<char*>(&vertex_count_face), sizeof(unsigned char));
@@ -360,11 +367,12 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
                 printf("vertex count: %d\n",vertex_count_face);
             }
             std::vector<int> vertices(vertex_count_face);
+            faces_eptr[i] = 3*i;
             for (int j = 0; j < vertex_count_face; ++j) {
                 file.read(reinterpret_cast<char*>(&vertices[j]), sizeof(int));
-                faces[3*i+j] = vertices[j];
+                faces[3*i+j] = vertices[j];   
             }
-
+            
             // Extract all edges from this face
             for (int j = 0; j < vertex_count_face; ++j) {
                 if (_ei >= (3*face_count)){
@@ -378,11 +386,11 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
                 _ei += 1;
                 
                 // -- view --
-                bool conda = (a == 295906) && (b == 296744);
-                bool condb = (b == 295906) && (a == 296744);
-                if (conda || condb){
-                    printf("face_index, v0, v1: %d %d %d\n",i, a, b);
-                }
+                // bool conda = (a == 295906) && (b == 296744);
+                // bool condb = (b == 295906) && (a == 296744);
+                // if (conda || condb){
+                //     printf("face_index, v0, v1: %d %d %d\n",i, a, b);
+                // }
 
             }
         }
@@ -461,7 +469,7 @@ bool ScanNetScene::write_ply_with_fn(const std::filesystem::path& scene_path,
 }
 
 
-bool ScanNetScene::write_ply(const std::filesystem::path& ply_file, PointCloudDataHost& data) {
+bool ScanNetScene::write_ply(const std::filesystem::path& ply_file, PointCloudDataHost& data, bool write_edges, bool write_faces) {
 
     // -- delete existing file if it exists --
     if (std::filesystem::exists(ply_file)) {
@@ -483,6 +491,7 @@ bool ScanNetScene::write_ply(const std::filesystem::path& ply_file, PointCloudDa
     header += "property float x\n";
     header += "property float y\n";
     header += "property float z\n";
+    
     header += "property uchar red\n";
     header += "property uchar green\n";
     header += "property uchar blue\n";
@@ -493,14 +502,20 @@ bool ScanNetScene::write_ply(const std::filesystem::path& ply_file, PointCloudDa
     if (!data.labels.empty()){
         header += "property uint label\n";
     }
-    // if (!data.edges.empty()){
-    //     header += "element edge " + std::to_string(data.E) + '\n';
-    //     header += "property int vertex1\n";
-    //     header += "property int vertex2\n";
-    // }
-    if (!data.faces.empty()){
+    if (!data.edges.empty() && write_edges){
+        header += "element edge " + std::to_string(data.E) + '\n';
+        header += "property int vertex1\n";
+        header += "property int vertex2\n";
+    }
+    if ((!data.faces.empty()) && write_faces){
         header += "element face " + std::to_string(data.F) + "\n";
         header += "property list uchar int vertex_indices\n";
+        if(!data.face_colors.empty()){
+            header += "property uchar red\n";
+            header += "property uchar green\n";
+            header += "property uchar blue\n";
+            header += "property uchar alpha\n";
+        }
     }
     header += "end_header\n";
     file.write(header.c_str(), header.length());
@@ -550,21 +565,21 @@ bool ScanNetScene::write_ply(const std::filesystem::path& ply_file, PointCloudDa
 
     }
 
-    // if (!data.edges.empty()){
-    //     for (int i = 0; i < data.E; ++i){
-    //         //unsigned char len = 2;
-    //         int e0 = data.edges[2*i+0]; // ??
-    //         int e1 = data.edges[2*i+1];
-    //         // if ((i % 10000 == 0) || (i < 10) || (i > (data.E-10))) {        
-    //         //     printf("e0, e1: %d %d\n",e0,e1);
-    //         // }
-    //         //file.write(reinterpret_cast<const char*>(&len), sizeof(unsigned char));
-    //         file.write(reinterpret_cast<const char*>(&e0), sizeof(int));
-    //         file.write(reinterpret_cast<const char*>(&e1), sizeof(int));
-    //     }
-    // }  
+    if (!data.edges.empty()){
+        for (int i = 0; i < data.E; ++i){
+            //unsigned char len = 2;
+            int e0 = data.edges[2*i+0]; // ??
+            int e1 = data.edges[2*i+1];
+            // if ((i % 10000 == 0) || (i < 10) || (i > (data.E-10))) {        
+            //     printf("e0, e1: %d %d\n",e0,e1);
+            // }
+            //file.write(reinterpret_cast<const char*>(&len), sizeof(unsigned char));
+            file.write(reinterpret_cast<const char*>(&e0), sizeof(int));
+            file.write(reinterpret_cast<const char*>(&e1), sizeof(int));
+        }
+    }  
     
-    if (!data.faces.empty()){
+    if ((!data.faces.empty()) && write_faces){
         for (int face = 0; face < data.F; ++face){
             int start = data.faces_eptr[face];
             int end   = data.faces_eptr[face+1];
@@ -574,6 +589,23 @@ bool ScanNetScene::write_ply(const std::filesystem::path& ply_file, PointCloudDa
             for (int index = start; index < end; index++){
                 int v = data.faces[index];
                 file.write(reinterpret_cast<const char*>(&v), sizeof(int));
+            }
+            if(!data.face_colors.empty()){
+                uint32_t label = 0;
+                if (!data.face_labels.empty()){
+                    label = data.face_labels[face];
+                }
+                unsigned char alpha = (label < UINT32_MAX) ? 255 : 0;
+                float3 col = data.face_colors[face];
+                unsigned char r = static_cast<unsigned char>(col.x * 255.0f);
+                unsigned char g = static_cast<unsigned char>(col.y * 255.0f);
+                unsigned char b = static_cast<unsigned char>(col.z * 255.0f);
+                file.write(reinterpret_cast<const char*>(&r), sizeof(unsigned char));
+                file.write(reinterpret_cast<const char*>(&g), sizeof(unsigned char));
+                file.write(reinterpret_cast<const char*>(&b), sizeof(unsigned char));
+                file.write(reinterpret_cast<const char*>(&alpha), sizeof(unsigned char));
+
+
             }
         }
     }  

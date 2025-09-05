@@ -101,6 +101,9 @@ struct SuperpixelParams3d{
   uint8_t* neigh_neq_ptr() {
       return thrust::raw_pointer_cast(neigh_neq.data());
   }
+  float3* mu_app_ptr(){
+    return thrust::raw_pointer_cast(mu_app.data());
+  }
   
   
   void comp_csum_nspix(){
@@ -274,7 +277,10 @@ struct PointCloudData {
     thrust::device_vector<float3> ftrs;
     thrust::device_vector<float3> pos;
     thrust::device_vector<uint32_t> faces;
-    thrust::device_vector<uint32_t> faces_eptr;
+    thrust::device_vector<uint32_t> faces_eptr; // similar to the csr_eptr
+    thrust::device_vector<uint32_t> face_labels;
+    thrust::device_vector<float3> face_colors;
+    thrust::device_vector<uint32_t> face_vnames; // temporary hack for now
     thrust::device_vector<uint32_t> edges;
     thrust::device_vector<uint32_t> csr_edges;
     thrust::device_vector<uint32_t> csr_eptr;
@@ -309,6 +315,7 @@ struct PointCloudData {
     float* bounding_boxes_ptr() { return thrust::raw_pointer_cast(bounding_boxes.data()); }
     uint32_t* labels_ptr() { return thrust::raw_pointer_cast(labels.data()); }
     bool* border_ptr() { return thrust::raw_pointer_cast(border.data()); }
+    uint32_t* face_vnames_ptr() { return thrust::raw_pointer_cast(face_vnames.data()); }
    
     // Host vector methods for data transfer
     thrust::host_vector<float3> ftrs_host() const {
@@ -402,6 +409,10 @@ struct PointCloudData {
       : ftrs(other.ftrs)
       , pos(other.pos)
       , faces(other.faces)
+      , faces_eptr(other.faces_eptr)
+      , face_vnames(other.face_vnames)
+      , face_labels(other.face_labels)
+      , face_colors(other.face_colors)
       , edges(other.edges)
       , csr_edges(other.csr_edges)
       , csr_eptr(other.csr_eptr)
@@ -424,6 +435,7 @@ struct PointCloudData {
   PointCloudData(const std::vector<float3>& ftrs_h,
                 const std::vector<float3>& pos_h,
                 const std::vector<uint32_t>& faces_h,
+                const std::vector<uint32_t>& faces_eptr_h,
                 const thrust::device_vector<uint32_t>& edges_h,
                 const std::vector<uint8_t>& vertex_batch_ids_h,
                 const std::vector<uint8_t>& edge_batch_ids_h,
@@ -435,6 +447,7 @@ struct PointCloudData {
       : ftrs(ftrs_h.begin(), ftrs_h.end())
       , pos(pos_h.begin(), pos_h.end())
       , faces(faces_h.begin(), faces_h.end())
+      , faces_eptr(faces_eptr_h.begin(),faces_eptr_h.end())
       , edges(edges_h)
       , vertex_batch_ids(vertex_batch_ids_h.begin(), vertex_batch_ids_h.end())
       , edge_batch_ids(edge_batch_ids_h.begin(), edge_batch_ids_h.end())
@@ -449,6 +462,7 @@ struct PointCloudData {
   PointCloudData(const thrust::device_vector<float3>& ftrs_d,
                 const thrust::device_vector<float3>& pos_d,
                 const thrust::device_vector<uint32_t>& faces_d,
+                const thrust::device_vector<uint32_t>& faces_eptr_d,
                 const thrust::device_vector<uint32_t>& edges_d,
                 const thrust::device_vector<uint8_t>& vertex_batch_ids_d,
                 const thrust::device_vector<uint8_t>& edge_batch_ids_d,
@@ -460,6 +474,7 @@ struct PointCloudData {
       : ftrs(ftrs_d)
       , pos(pos_d)
       , faces(faces_d)
+      , faces_eptr(faces_eptr_d)
       , edges(edges_d)
       , vertex_batch_ids(vertex_batch_ids_d)
       , edge_batch_ids(edge_batch_ids_d)
@@ -486,6 +501,8 @@ struct PointCloudDataHost {
     std::vector<float3> pos;
     std::vector<uint32_t> faces;
     std::vector<uint32_t> faces_eptr;
+    std::vector<uint32_t> face_labels;
+    std::vector<float3> face_colors;
     std::vector<uint32_t> edges;
     std::vector<uint32_t> csr_edges;
     std::vector<uint32_t> csr_eptr;
@@ -580,7 +597,7 @@ struct PointCloudDataHost {
             }
         }
         
-        // Extract face data [warning; batching problems with extraction; "F+1" vs "F" for each batch...]
+        // Extract face data [warning; batching problems with extraction; "F+1" vs "F" for each batch... maybe not a problem...]
         if ((F > 0) && (device_data.faces_eptr.size()>0)) {
             faces_eptr.resize(F+1);
             printf("%d %d\n",F,device_data.faces_eptr.size());
@@ -595,6 +612,18 @@ struct PointCloudDataHost {
             thrust::copy(device_data.faces.begin() + start,
                         device_data.faces.begin() + end,
                         faces.begin());
+            if(!device_data.face_labels.empty()){
+                face_labels.resize(F);
+                thrust::copy(device_data.face_labels.begin() + f_start,
+                             device_data.face_labels.begin() + F,
+                             face_labels.begin());
+            }
+            if(!device_data.face_colors.empty()){
+                face_colors.resize(F);
+                thrust::copy(device_data.face_colors.begin() + f_start,
+                             device_data.face_colors.begin() + F,
+                             face_colors.begin());
+            }
 
         }
         

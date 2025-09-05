@@ -51,15 +51,17 @@ void flood_fill(PointCloudData& data, spix_params* params, uint32_t* spix, uint3
     int count_prev = -1;
     while(count < data.V){
         // -- propogate seed value to all connected neighbors --
-        propogate_seed<<<VertexBlocks,NumThreads>>>(spix,valid_label_ptr,data.csr_edges_ptr(),data.csr_eptr_ptr(),data.V);
+        propogate_seed<<<VertexBlocks,NumThreads>>>(spix,valid_label_ptr,data.csr_edges_ptr(),data.csr_eptr_ptr(),data.V,iter);
         count = thrust::count(valid_label.begin(), valid_label.end(), true);
         if (count == count_prev){
             printf("count: %d %d\n",count,data.V);
-            printf("Something is wrong with your meshgrid -- its not path-connected.\n");
-            exit(1);
+            printf("Something is wrong with your mesh -- its not path-connected.\n");
+            if (iter > 1){
+                exit(1);
+            }
+            iter++;
         }
         count_prev = count;
-        iter++;
     }
 
     // -- view --
@@ -128,7 +130,7 @@ set_only_seeds(uint64_t* distances, uint32_t* spix, uint32_t* csum_nspix, uint8_
 }
 
 __global__ void
-propogate_seed(uint32_t* spix, bool* valid_label, uint32_t* edges, uint32_t* eptr, uint32_t V){
+propogate_seed(uint32_t* spix, bool* valid_label, uint32_t* edges, uint32_t* eptr, uint32_t V, int dev_iter){
 
     // -- unpack indexing --
     uint32_t vertex = threadIdx.x + blockIdx.x * blockDim.x;
@@ -137,7 +139,12 @@ propogate_seed(uint32_t* spix, bool* valid_label, uint32_t* edges, uint32_t* ept
     uint32_t my_spix_id = spix[vertex];
     
     // Only labeled vertices participate in propagation
-    if (my_spix_id == UINT32_MAX) return;
+    if (my_spix_id == UINT32_MAX){
+        if (dev_iter > 0){
+            printf("vertex: %d\n",vertex);
+        }
+        return;
+    }
     valid_label[vertex] = 1;
     
     // -- read neighbors --

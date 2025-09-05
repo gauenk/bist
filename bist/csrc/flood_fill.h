@@ -26,5 +26,5 @@ set_only_seeds(uint64_t* distances, uint32_t* spix, uint32_t* csum_nspix, uint8_
 
 
 __global__ void
-propogate_seed(uint32_t* spix, bool* valid_label, uint32_t* edges, uint32_t* eptr, uint32_t V);
+propogate_seed(uint32_t* spix, bool* valid_label, uint32_t* edges, uint32_t* eptr, uint32_t V, int dev_iter);
 

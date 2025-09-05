@@ -59,6 +59,7 @@ __host__ void update_seg(spix_params* aos_params, spix_helper* sp_helper, PointC
     //     logger->boundary_update(data,soa_params,aos_params);
     // }
     // return;
+    printf("data.gchrome: %d\n",data.gchrome);
 
     // assert(nbatch==1);
     for (int iter = 0 ; iter < args.niters_seg; iter++){
@@ -79,13 +80,13 @@ __host__ void update_seg(spix_params* aos_params, spix_helper* sp_helper, PointC
                                                           data.V,args.sigma2_app,args.potts);
             // gpuErrchk( cudaPeekAtLastError() );
             // gpuErrchk( cudaDeviceSynchronize() );
-            
-            // -- log it! --
-            if (logger!=nullptr){
-                logger->boundary_update(data,soa_params,aos_params);
-            }
 
         }
+    }
+            
+    // -- log it! --
+    if (logger!=nullptr){
+        logger->boundary_update(data,soa_params,aos_params);
     }
 }
 

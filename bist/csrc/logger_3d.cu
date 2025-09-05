@@ -57,23 +57,11 @@ void Logger::boundary_update(PointCloudData& in_data, SuperpixelParams3d& params
     data.border = params.border;
     // cudaMemset(data.border_ptr(), 0, data.V*sizeof(bool));
     // set_border(data.labels_ptr(), data.border_ptr(), data.csr_edges_ptr(),data.csr_eptr_ptr(),data.V);
-    filter_to_border_edges(data);
+    //filter_to_border_edges(data);
 
     // -- prepare superpixel information --
     aos_to_soa(sp_params, params); // from spix_params -> SuperpixelParams3d
-
-    // // -- keep only edges along the border for a "B-" viz --
-    // filter_to_border_edges()
-    // thrust::device_vector<uint32_t> border_edges;
-    // thrust::device_vector<int> border_eptr;
-    // thrust::device_vector<uint8_t> border_bids;
-    // // std::tie(border_edges,border_eptr,border_bids) = get_border_edges(params.spix_ptr(),border,edges_dptr,ebids_dptr,data.B,data.E);
-    // std::tie(border_edges,border_eptr,border_bids) = get_border_edges(params.spix_ptr(),border,data.edges_ptr(),data.edge_batch_ids_ptr(),data.B,data.E);
-    // int num_edges = border_edges.size()/2;
-    // thrust::host_vector<uint32_t> edges_cpu = border_edges;
-    // data.edges = std::move(border_edges);
-    // data.eptr = std::move(border_eptr);
-    // data.edge_batch_ids = std::move(border_bids);
+    apply_spix_pooling(data,params);
 
     int bx = 0;
     // printf("log_roots.size(): %d\n",log_roots.size());
