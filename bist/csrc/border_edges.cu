@@ -958,23 +958,33 @@ void apply_spix_pooling(PointCloudData& data, SuperpixelParams3d& spix_params){
     data.ftrs = vertex_colors;
 }
 
-PointCloudData get_border_data(PointCloudData& primal, PointCloudData& dual, SuperpixelParams3d& spix_params, uint32_t S){
+PointCloudData get_border_data(PointCloudData& primal, PointCloudData& dual, SuperpixelParams3d& spix_params, uint32_t S, bool use_dual){
 
     // -- get labels for border --
-    auto labels = get_primal_labels(primal,dual);
+    
+    // exit early 
+    auto labels = use_dual ? get_primal_labels(primal,dual) : dual.labels;
     uint32_t* labels_dptr = thrust::raw_pointer_cast(labels.data());
     PointCloudData border = primal.copy();
     border.labels = labels;
     primal.labels = labels;
-    dual.face_labels = labels;
 
-    thrust::device_vector<float3> face_colors(dual.F);
-    {
-        float3* face_colors_dptr = thrust::raw_pointer_cast(face_colors.data());
-        int NumThreads = 256;
-        int NumFaceBlocks = ceil( double(dual.F) / double(NumThreads) );
-        set_face_colors<<<NumFaceBlocks,NumThreads>>>(face_colors_dptr, labels_dptr, spix_params.mu_app_ptr(), dual.F, S);
-    }
+    // -- write features to dual graph --
+    if (use_dual){
+
+        dual.face_labels = labels;
+        thrust::device_vector<float3> face_colors(dual.F);
+        {
+            float3* face_colors_dptr = thrust::raw_pointer_cast(face_colors.data());
+            int NumThreads = 256;
+            int NumFaceBlocks = ceil( double(dual.F) / double(NumThreads) );
+            set_face_colors<<<NumFaceBlocks,NumThreads>>>(face_colors_dptr, labels_dptr, spix_params.mu_app_ptr(), dual.F, S);
+        }
+        dual.face_colors = face_colors;
+
+    } 
+    
+    // the dual should be a copy of the primal; use this for pooling
     thrust::device_vector<float3> vertex_colors(dual.V);
     {
         float3* vertex_colors_dptr = thrust::raw_pointer_cast(vertex_colors.data());
@@ -982,7 +992,6 @@ PointCloudData get_border_data(PointCloudData& primal, PointCloudData& dual, Sup
         int NumVertexColor = ceil( double(dual.V) / double(NumThreads) );
         set_vertex_colors<<<NumVertexColor,NumThreads>>>(vertex_colors_dptr, spix_params.spix_ptr(), spix_params.mu_app_ptr(), dual.V, S);
     }
-    dual.face_colors = face_colors;
     dual.ftrs = vertex_colors;
 
     // thrust::device_vector<uint32_t> new_labels(dual.V,UINT32_MAX);

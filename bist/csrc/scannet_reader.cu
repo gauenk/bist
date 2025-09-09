@@ -195,6 +195,9 @@ int get_vertex_count(const std::filesystem::path& scene_path) {
     // -- get filenames --
     std::string scene_name = scene_path.filename().string();
     std::filesystem::path ply_file = scene_path / (scene_name + "_vh_clean_2.ply");
+    if (!std::filesystem::exists(ply_file)) {
+        ply_file = scene_path / (scene_name + ".ply");
+    }
     std::ifstream file(ply_file.string());
     if (!file.is_open()) {
         printf("didn't get the vertex count!\n");
@@ -217,6 +220,9 @@ int get_face_count(const std::filesystem::path& scene_path) {
     // -- get filenames --
     std::string scene_name = scene_path.filename().string();
     std::filesystem::path ply_file = scene_path / (scene_name + "_vh_clean_2.ply");
+    if (!std::filesystem::exists(ply_file)) {
+        ply_file = scene_path / (scene_name + ".ply");
+    }
     std::ifstream file(ply_file.string());
     if (!file.is_open()) {
         printf("didn't get the vertex count!\n");
@@ -248,6 +254,9 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
     std::string scene_name = scene_path.filename().string();
     std::filesystem::path info_file = scene_path / (scene_name + ".txt");
     std::filesystem::path ply_file = scene_path / (scene_name + "_vh_clean_2.ply");
+    if (!std::filesystem::exists(ply_file)) {
+        ply_file = scene_path / (scene_name + ".ply");
+    }
     std::cout << info_file << std::endl;
     std::cout << ply_file << std::endl;
 

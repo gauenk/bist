@@ -65,6 +65,9 @@ int main(int argc, char **argv) {
     int nscenes = 0;
     int batchsize = 1;
 
+    // -- mesh config params --
+    int _use_dual = 1;
+    
     // -- core superpixel parameters --
     int sp_size = 25;
     float sigma_app = 0.009f;
@@ -78,6 +81,7 @@ int main(int argc, char **argv) {
     float gamma = 4.0;
     float epsilon_reid = 1e-6;
     float epsilon_new = 0.05;
+    float data_scale = 0.01; // scannetv2
 
     // -- misc --
     int input_niters = 0;
@@ -107,7 +111,10 @@ int main(int argc, char **argv) {
             !parse_argument(i, argc, argv, arg, "-d", data_name) ||
             !parse_argument(i, argc, argv, arg, "-n", nscenes) ||
             !parse_argument(i, argc, argv, arg, "-b", batchsize) ||
+            // -- mesh modification parameters --
+            !parse_argument(i, argc, argv, arg, "--dual", _use_dual) ||
             // -- core superpixel parameters --
+            !parse_argument(i, argc, argv, arg, "-c", data_scale) ||
             !parse_argument(i, argc, argv, arg, "-s", sp_size) ||
             !parse_argument(i, argc, argv, arg, "--sigma_app", sigma_app) ||
             !parse_argument(i, argc, argv, arg, "--potts", potts) ||
@@ -152,6 +159,7 @@ int main(int argc, char **argv) {
     // -- control the number of spix --
     int nbatch = 1;
     int nftrs = 3;
+    bool use_dual = (_use_dual == 1);
     bool use_sm = (_use_sm == 1);
     bool controlled_nspix = (target_nspix > 0);
     int niters = (input_niters == 0) ? sp_size : input_niters;
@@ -167,7 +175,7 @@ int main(int argc, char **argv) {
     // printf("use_sm: %d\n",use_sm==true);  
 
     // -- create argument struct --
-    SpixMetaData args{niters, niters_seg, sm_start, sp_size,
+    SpixMetaData args{niters, niters_seg, sm_start, data_scale, sp_size,
                      sigma2_app, sigma2_size, potts, alpha, split_alpha, target_nspix, nspix_buffer_mult};
 
     // -- allow for batching --
@@ -194,27 +202,29 @@ int main(int argc, char **argv) {
             PointCloudData data  = read_scene(scene_files_b);
 
             // -- enforce manifold edges --
-            manifold_edges(data);
+            if (use_dual){
+                manifold_edges(data);
+            }
 
             // -- inspect --
-            {
-                for(int index=data.E-132-4; index < data.E-132+4; index++){
-                    int e0 = data.edges[2*index+0];
-                    int e1 = data.edges[2*index+1];
-                    int bid = data.edge_batch_ids[index];
-                    printf("%d %d %d\n",e0,e1,bid);
-                }
-                int E_ptr = data.eptr[1];
-                printf("E vs E : %d %d\n",data.E,E_ptr);
+            // {
+            //     for(int index=data.E-132-4; index < data.E-132+4; index++){
+            //         int e0 = data.edges[2*index+0];
+            //         int e1 = data.edges[2*index+1];
+            //         int bid = data.edge_batch_ids[index];
+            //         printf("%d %d %d\n",e0,e1,bid);
+            //     }
+            //     int E_ptr = data.eptr[1];
+            //     printf("E vs E : %d %d\n",data.E,E_ptr);
 
-                for(int index=data.V-132-4; index < data.V-132+4; index++){
-                    int bid = data.vertex_batch_ids[index];
-                    printf(" %d\n",bid);
-                }
-                int V_ptr = data.vptr[1];
-                printf("V vs V : %d %d\n",data.V,V_ptr);
+            //     for(int index=data.V-132-4; index < data.V-132+4; index++){
+            //         int bid = data.vertex_batch_ids[index];
+            //         printf(" %d\n",bid);
+            //     }
+            //     int V_ptr = data.vptr[1];
+            //     printf("V vs V : %d %d\n",data.V,V_ptr);
 
-            }
+            // }
 
             // -- convert to csr --
             thrust::device_vector<uint32_t> csr_edges;
@@ -237,9 +247,8 @@ int main(int argc, char **argv) {
             data.gchrome = gchrome;
 
             // -- get face-dual mesh --
-            PointCloudData dual = create_dual_mesh(data);
-            //PointCloudData dual = data.copy();
-            {            
+            PointCloudData dual = use_dual ? create_dual_mesh(data) : data.copy();
+            if(use_dual){            
                 uint8_t gchrome;
                 thrust::device_vector<uint8_t> gcolors;
                 std::tie(gcolors,gchrome) = get_graph_coloring(dual.csr_edges_ptr(), dual.csr_eptr_ptr(), dual.V);
@@ -298,7 +307,7 @@ int main(int argc, char **argv) {
             // // cudaMemset(border_data.border_ptr(), 0, border_data.V*sizeof(bool));
             // // set_border(border_data.labels_ptr(), border_data.border_ptr(), border_data.csr_edges_ptr(),border_data.csr_eptr_ptr(),border_data.V);
             // filter_to_border_edges(border_data);
-            PointCloudData border_data = get_border_data(data,dual,params,params.nspix_sum);
+            PointCloudData border_data = get_border_data(data,dual,params,params.nspix_sum,use_dual);
 
 
             // -- write and free --

@@ -242,6 +242,7 @@ struct SpixMetaData {
     int niters;
     int niters_seg;
     int sm_start;
+    float data_scale;
     int sp_size;
     float sigma2_app;
     float sigma2_size;
@@ -252,13 +253,15 @@ struct SpixMetaData {
     int nspix_buffer_mult;
     
     // Could be const after initialization
-    SpixMetaData(int niters, int niters_seg, int sm_start, int sp_size,
+    SpixMetaData(int niters, int niters_seg, int sm_start, 
+                 float data_scale, int sp_size,
                  float sigma2_app, float sigma2_size, float potts,
                  float alpha, float split_alpha, int target_nspix,
                  int nspix_buffer_mult) :
         niters(niters)
         , niters_seg(niters_seg)
         , sm_start(sm_start)
+        , data_scale(data_scale)
         , sp_size(sp_size)
         , sigma2_app(sigma2_app)
         , sigma2_size(sigma2_size)

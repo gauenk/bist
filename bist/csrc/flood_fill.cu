@@ -20,6 +20,12 @@
 
 #define THREADS_PER_BLOCK 512
 
+__global__ void check_em_mate(uint32_t* nspix, uint32_t* nspix_new, uint32_t V) {
+    // -- unpack indexing --
+	uint32_t vertex = threadIdx.x + blockIdx.x * blockDim.x;  // the label
+	if (vertex>=V) return;
+    assert(nspix[vertex] < UINT32_MAX);
+}
 
 
 void flood_fill(PointCloudData& data, uint32_t* spix, uint32_t* nspix, uint32_t* csum_nspix, uint32_t S){
@@ -97,6 +103,8 @@ void flood_fill(PointCloudData& data, uint32_t* spix, uint32_t* nspix, uint32_t*
             // -- update number of superpixels --
             add_new_nspix<<<1,data.B>>>(nspix,num_new_spix_dptr,data.B);
 
+            // -- check --
+            //check_em_mate<<<VertexBlocks,NumThreads>>>(spix,num_new_spix_dptr,data.V);
             break;
             // printf("count: %d %d\n",count,data.V);
             // printf("Something is wrong with your mesh -- its not path-connected.\n");
@@ -326,3 +334,4 @@ __global__ void add_new_nspix(uint32_t* nspix, uint32_t* nspix_new, uint32_t B) 
 	if (batch_ix>=B) return;
     nspix[batch_ix] += nspix_new[batch_ix];
 }
+

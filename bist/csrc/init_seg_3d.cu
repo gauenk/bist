@@ -1,6 +1,7 @@
 
 #include "init_seg_3d.h"
 #include "init_utils.h"
+#include "assert.h"
 #include <math.h>
 #define THREADS_PER_BLOCK 512
 
@@ -11,17 +12,28 @@
 
 **************************************************/
 
-__host__ uint32_t* init_seg_3d(uint32_t* spix, float3* pos, uint8_t* bids, int* ptr, float* dim_sizes, int sp_size, int nbatch, int nnodes){
+__global__ void check_em_mate(uint32_t* spix, uint32_t* max_nspix, int V){
+  // -- unpack threads --
+  int S = max_nspix[0]; // dev only -- batch 1
+  int vertex = threadIdx.x + blockIdx.x * blockDim.x;
+  if (vertex >= V){ return; }
+  assert(spix[vertex] < S);
+}
+
+
+__host__ uint32_t* init_seg_3d(uint32_t* spix, float3* pos, uint8_t* bids, int* ptr, float* dim_sizes, float data_scale, int sp_size, int nbatch, int nnodes){
   uint32_t* nspix = (uint32_t*)easy_allocate(nbatch,sizeof(uint32_t));
   dim3 nthreads(THREADS_PER_BLOCK);
   int nblocks_nodes =  ceil(double(nnodes) /double(THREADS_PER_BLOCK));
   dim3 nblocks(nblocks_nodes);
-  InitVeronoiSeg<<<nblocks,nthreads>>>(spix, nspix, pos, bids, ptr, dim_sizes, sp_size, nnodes);
+  InitVeronoiSeg<<<nblocks,nthreads>>>(spix, nspix, pos, bids, ptr, dim_sizes, data_scale, sp_size, nnodes);
+  check_em_mate<<<nblocks,nthreads>>>(spix, nspix, nnodes);
+
   return nspix;
 }
 
 
-__global__ void InitVeronoiSeg(uint32_t* spix, uint32_t* nspix, float3* pos, uint8_t* bids, int* ptr, float* dim_sizes, int sp_size, int nnodes_total){
+__global__ void InitVeronoiSeg(uint32_t* spix, uint32_t* nspix, float3* pos, uint8_t* bids, int* ptr, float* dim_sizes, float data_scale, int sp_size, int nnodes_total){
 	
   // -- unpack threads --
   int node_ix = threadIdx.x + blockIdx.x * blockDim.x;
@@ -32,7 +44,7 @@ __global__ void InitVeronoiSeg(uint32_t* spix, uint32_t* nspix, float3* pos, uin
   // -- ... --
   int ptr_offset = ptr[bx];
   int nnodes = ptr[bx+1] - ptr_offset;
-  float S = 0.01 * sp_size; // about 1 cm spacing.
+  float S = data_scale * sp_size; // about 1 cm spacing.
   int local_node_ix = node_ix - ptr_offset;
   if (local_node_ix >= nnodes){ return; }
 
@@ -110,6 +122,7 @@ __global__ void InitVeronoiSeg(uint32_t* spix, uint32_t* nspix, float3* pos, uin
   spix[node_ix] = (xi * ny * nz + yi * nz + zi) * 2 + cell_type;
   //printf("spix[%d] = %d\n",node_ix,spix[node_ix]);
   if (local_node_ix == 0){
-    nspix[bx] = min(nx *  ny * nz * 2,nnodes);
+    // nspix[bx] = min(nx *  ny * nz * 2,nnodes);
+    nspix[bx] = nx *  ny * nz * 2;
   }
 }
