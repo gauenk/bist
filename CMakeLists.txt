@@ -31,7 +31,6 @@ endif()
 
 set(SHARED_SOURCES
   bist/csrc/init_utils.cu
-  bist/csrc/init_seg.cu
 )
 
 set(SHARED_SOURCES_2D
@@ -55,6 +54,7 @@ set(SHARED_SOURCES_2D
   bist/csrc/shift_and_fill.cu
   bist/csrc/shift_labels.cu
   bist/csrc/fill_missing.cu
+  bist/csrc/init_seg.cu
   bist/csrc/sp_pooling.cu
   bist/csrc/split_disconnected.cu
   bist/csrc/relabel.cu
@@ -66,10 +66,12 @@ set(SHARED_SOURCES_3D
   bist/csrc/scannet_reader.cu
   bist/csrc/compact_spix_3d.cu
   bist/csrc/flood_fill.cu
+  bist/csrc/manifold_edges.cu
   bist/csrc/extract_edges.cu
   bist/csrc/csr_edges.cu
   bist/csrc/graph_coloring.cu
-  bist/csrc/sparams_io_3d.cu  
+  bist/csrc/sparams_io_3d.cu
+  bist/csrc/init_seg_3d.cu
   bist/csrc/seg_utils_3d.cu
   bist/csrc/update_params_3d.cu
   bist/csrc/update_seg_3d.cu

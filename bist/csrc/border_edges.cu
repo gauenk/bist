@@ -51,6 +51,13 @@ void filter_to_border_edges(PointCloudData& data){
     cudaMemset(data.border_ptr(), 0, data.V*sizeof(bool));
     set_border(data.labels_ptr(), data.border_ptr(), data.csr_edges_ptr(),data.csr_eptr_ptr(),data.V);
 
+    // -- check --
+    int nedges = thrust::count(data.border.begin(), data.border.end(), true);
+    if (nedges == 0){
+        printf("No edges detected. Are you actually running the clustering algorithm?\n");
+        return;
+    }
+
     // -- keep only edges along the border for a "B-" viz --
     thrust::device_vector<uint32_t> border_edges;
     thrust::device_vector<int> border_eptr;

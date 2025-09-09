@@ -14,7 +14,7 @@
 #include <thrust/sort.h>
 
 // -- opencv --
-#include <opencv2/opencv.hpp>
+//#include <opencv2/opencv.hpp>
 
 // -- local --
 #include "init_utils.h"
@@ -26,6 +26,7 @@
 #include "graph_coloring.h"
 #include "face_dual.h"
 
+#include "manifold_edges.h"
 #include "border_edges.h"
 // #include "seg_utils_3d.h"
 
@@ -191,9 +192,29 @@ int main(int argc, char **argv) {
             std::vector<std::filesystem::path> scene_files_b(scene_files.begin() + s_index, scene_files.begin() + e_index);
             //auto read_out = read_scene(scene_files_b);
             PointCloudData data  = read_scene(scene_files_b);
-            int B = scene_files_b.size();
-            cudaDeviceSynchronize();
 
+            // -- enforce manifold edges --
+            manifold_edges(data);
+
+            // -- inspect --
+            {
+                for(int index=data.E-132-4; index < data.E-132+4; index++){
+                    int e0 = data.edges[2*index+0];
+                    int e1 = data.edges[2*index+1];
+                    int bid = data.edge_batch_ids[index];
+                    printf("%d %d %d\n",e0,e1,bid);
+                }
+                int E_ptr = data.eptr[1];
+                printf("E vs E : %d %d\n",data.E,E_ptr);
+
+                for(int index=data.V-132-4; index < data.V-132+4; index++){
+                    int bid = data.vertex_batch_ids[index];
+                    printf(" %d\n",bid);
+                }
+                int V_ptr = data.vptr[1];
+                printf("V vs V : %d %d\n",data.V,V_ptr);
+
+            }
 
             // -- convert to csr --
             thrust::device_vector<uint32_t> csr_edges;
@@ -286,7 +307,7 @@ int main(int argc, char **argv) {
             cudaDeviceSynchronize();
 
             // -- write labeled mesh, spix, and dual mesh --
-            for (int batch_index=0; batch_index < B; batch_index++){
+            for (int batch_index=0; batch_index < data.B; batch_index++){
                 
                 // init scene [not really needed...]
                 ScanNetScene scene;

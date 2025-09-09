@@ -60,6 +60,7 @@ PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files)
     std::vector<uint8_t> vertex_batch_ids(total_vertices, 0);
     std::vector<uint32_t> faces(3 * total_faces, 0);
     std::vector<uint32_t> faces_eptr(total_faces+1, 0);
+    std::vector<uint8_t> face_batch_ids(total_faces, 0);
 
     
     // Edge data (stored on device)
@@ -68,6 +69,7 @@ PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files)
 
     // Second pass: Load and copy scene data
     int vertex_offset = 0;
+    // int face_offset = 0;
     for (int batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
         const auto& scene_file = scene_files[batch_idx];
         
@@ -93,6 +95,7 @@ PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files)
         const int face_offset = face_ptr[batch_idx];
         memcpy(&faces[3 * face_offset], scene.faces.data(), 3 * scene_face_count * sizeof(uint32_t));
         memcpy(&faces_eptr[face_offset], scene.faces_eptr.data(), (scene_face_count+1)* sizeof(uint32_t));
+        std::fill(face_batch_ids.begin() + face_offset, face_batch_ids.begin() + face_offset + scene.nfaces, batch_idx);
 
         // Extract and append edges
         thrust::device_vector<uint32_t> scene_edges = extract_edges_from_pairs(scene.e0, scene.e1);
@@ -115,6 +118,7 @@ PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files)
         bounding_boxes[bbox_offset + 5] = scene.zmax;
         
         vertex_offset += scene_vertex_count;
+        // face_offset += scene.nfaces;
     }
 
     // Print summary information
@@ -149,7 +153,7 @@ PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files)
 
     PointCloudData data(
         features, positions, faces, faces_eptr, all_edges,
-        vertex_batch_ids, edge_batch_ids, vertex_ptr, edge_ptr, face_ptr,
+        vertex_batch_ids, edge_batch_ids, face_batch_ids, vertex_ptr, edge_ptr, face_ptr,
         bounding_boxes, batch_size, total_vertices, total_edges, total_faces
     );
     return data;

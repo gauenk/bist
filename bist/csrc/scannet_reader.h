@@ -19,7 +19,7 @@ struct ScanNetScene {
     std::vector<uint32_t> faces;
     std::vector<uint32_t> faces_eptr;
     int size;                // Number of points
-    int nfaces; // number of pairs
+    int nfaces; // number of pairs (?... num faces?)
     float xmin, xmax, ymin, ymax, zmin, zmax;
     
     ScanNetScene();
