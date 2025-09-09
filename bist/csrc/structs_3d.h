@@ -607,18 +607,26 @@ struct PointCloudDataHost {
         // Extract face data [warning; batching questionable... maybe not a problem...]
         if ((F > 0) && (device_data.faces_eptr.size()>0)) {
             faces_eptr.resize(F+1);
-            printf("%d %d\n",F,device_data.faces_eptr.size());
+            //printf("%d %d\n",F,device_data.faces_eptr.size());
             thrust::copy(device_data.faces_eptr.begin() + f_start,
                         device_data.faces_eptr.begin() + f_end+1,
                         faces_eptr.begin());
             uint32_t start = faces_eptr[0];
             uint32_t end = faces_eptr[F];
             uint32_t size = end - start;
-            //printf("start,end: %d %d\n",start,end);
+            printf("[faces] start,end: %d %d %d %d\n",start,end,f_start,f_end);
             faces.resize(size);
             thrust::copy(device_data.faces.begin() + start,
                         device_data.faces.begin() + end,
                         faces.begin());
+            
+            // Extract edge batch IDs if they exist
+            if (!device_data.face_batch_ids.empty()) {
+                face_batch_ids.resize(F);
+                thrust::copy(device_data.face_batch_ids.begin() + f_start,
+                           device_data.face_batch_ids.begin() + f_end,
+                           face_batch_ids.begin());
+            }
             if(!device_data.face_labels.empty()){
                 face_labels.resize(F);
                 thrust::copy(device_data.face_labels.begin() + f_start,
@@ -630,14 +638,6 @@ struct PointCloudDataHost {
                 thrust::copy(device_data.face_colors.begin() + f_start,
                              device_data.face_colors.begin() + f_end, 
                              face_colors.begin());
-            }
-
-                        // Extract edge batch IDs if they exist
-            if (!device_data.face_batch_ids.empty()) {
-                face_batch_ids.resize(F);
-                thrust::copy(device_data.face_batch_ids.begin() + f_start,
-                           device_data.face_batch_ids.begin() + f_end,
-                           face_batch_ids.begin());
             }
         }
         

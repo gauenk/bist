@@ -104,7 +104,7 @@ SuperpixelParams3d run_bass3d(PointCloudData& data, SpixMetaData& args, Logger* 
 
     // -- init spix --
     SuperpixelParams3d params(data.V,data.B);
-    return params;
+    //return params;
     // -- init spix & compact  [ sets nspix within params ] --
     uint32_t* init_nspix = init_seg_3d(params.spix_ptr(), data.pos_ptr(), data.vertex_batch_ids_ptr(), data.vptr_ptr(), data.bounding_boxes_ptr(), args.sp_size, data.B, data.V);
     run_compactify(params.nspix_ptr(), params.spix_ptr(), data.vertex_batch_ids_ptr(), params.prev_nspix_ptr(), init_nspix, data.B, data.V);

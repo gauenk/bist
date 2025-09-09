@@ -323,7 +323,7 @@ int main(int argc, char **argv) {
                 std::filesystem::path dual_fname = write_path / (scene_name + "_dual.ply");
                 std::filesystem::path dual_edge_fname = write_path / (scene_name + "_dual_edges.ply");
                 std::filesystem::path spix_fname = write_path / (scene_name + "_spix.ply");
-
+                std::cout << mesh_fname << std::endl;
 
                 // -- get batch data --
                 PointCloudDataHost host_data(data,batch_index);
@@ -341,8 +341,34 @@ int main(int argc, char **argv) {
                     exit(1);
                 }
 
+                // // -- temp --
+                // printf("----------------------------\n");
+                // auto faces = dual.faces;
+                // auto faces_eptr = dual.faces_eptr;
+                // for(int index = 0; index < dual.F; index++){
+
+                //     int start = dual.faces_eptr[index];
+                //     int end   = dual.faces_eptr[index+1];
+                //     bool any_zero = false;
+                //     for(int j_index = start; j_index < end; j_index++){
+                //         any_zero = any_zero || (faces[j_index] == 0);
+                //     }
+                //     if(any_zero){
+                //         printf("face[%d]: %d\n",index,end-start);
+                //     }
+                //     for(int j_index = start; j_index < end; j_index++){
+                //         if(any_zero){
+                //             uint32_t v = faces[j_index];
+                //             printf("%d: %d\n",index,v);
+                //         }
+                //     }
+                // }
+                // printf("----------------------------\n");
+
+
+
                 // -- write dual scene --
-                if(!scene.write_ply(dual_fname,host_dual)){
+                if(!scene.write_ply(dual_fname,host_dual,true,true)){
                     exit(1);
                 }
 

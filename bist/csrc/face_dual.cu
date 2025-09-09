@@ -315,7 +315,7 @@ get_face_csr(uint32_t* csr_edges, uint32_t* csr_eptr, uint32_t* E, bool* flag, b
     }
 
     csr_eptr[face_index] = edge_count;
-    eflag[face_index] = edge_count>0;
+    eflag[face_index] = edge_count>0; // thinking; keep everyone? otherwise, i think we need to relabel... maybe not since csr_eptr catches this...
     //assert(edge_count>0);
     atomicAdd(E,edge_count);
 
@@ -332,10 +332,20 @@ get_uniq_edges(uint32_t* edges, uint32_t* write_offset, const uint32_t* csr_edge
     // -- .. --
     uint32_t start = csr_eptr[vertex];
     uint32_t end = csr_eptr[vertex+1];
+
+    // -- check --
+    // if (vertex == 563800){
+    //     printf("start end: %d %d\n",start,end);
+    // }
+
     assert ((end - start) <= 3);
     int num = 0;
     for(uint32_t index = start; index < end; index++){
         uint32_t neigh = csr_edges[index];
+        // if ((vertex > 0) && (neigh == 0)){
+        //     printf("[%d]: %d\n",vertex,neigh);
+        // }
+
         if (vertex >= neigh){ continue; }
         neighs[num] = neigh;
         num++;
@@ -395,8 +405,12 @@ construct_dual_faces(uint32_t* faces, uint32_t* faces_size, bool* flag, bool* fa
 	if (primal_vertex>=V) return;
 
     // -- allocate --
-    constexpr int MAX_NEIGHS = 32;
+    constexpr int MAX_NEIGHS = 32; // max degree of primal
     uint32_t neighs[MAX_NEIGHS] = {UINT32_MAX};
+    #pragma unroll
+    for (int i = 0; i < MAX_NEIGHS; i++) {
+        neighs[i] = UINT32_MAX;
+    }
 
     // -- get endpoints --
     uint32_t start = csr_eptr[primal_vertex];
@@ -414,7 +428,23 @@ construct_dual_faces(uint32_t* faces, uint32_t* faces_size, bool* flag, bool* fa
         num++;
     }
     neighs[num] = neighs[0];
+    // printf("neighs[num+1]: %d",neighs[num+1]);
 
+    // -- info --
+    // bool any_found = false;
+    // for (int index=0; index < num; index++){
+    //     bool conda = neighs[index] == 0;
+    //     bool condb = neighs[index] == 78188;
+    //     any_found = conda || condb;
+    // }
+
+    // for (int index=0; index < num; index++){
+    //     if(any_found){
+    //         printf("[%d] neigh[%d]: %d\n",primal_vertex,index,neighs[index]);
+    //     }
+    // }
+
+     
     // -- path traversal --
     bool success;
     int selected_ix;
@@ -455,6 +485,28 @@ construct_dual_faces(uint32_t* faces, uint32_t* faces_size, bool* flag, bool* fa
     }
     atomicAdd(F,1);
     
+
+    // -- info --
+    // int init_num = num;
+    // start = csr_eptr[primal_vertex];
+    // end = csr_eptr[primal_vertex+1];
+    // num = 0;
+    // bool any_found = false;
+    // for (int index = start; index < end; index++){
+    //     if (neighs[num+1] == UINT32_MAX){ break; }
+    //     bool conda = neighs[num] == 0;
+    //     bool condb = false;
+    //     any_found = conda || condb;
+    //     num++;
+    // }
+    // num = 0;
+    // for (int index = start; index < end; index++){
+    //     if(any_found){
+    //         printf("[%d,%d] neigh[%d]: %d\n",primal_vertex,init_num,index,neighs[num]);
+    //     }
+    //     num++;
+    // }
+
     // -- mark for keeping and write if successful --
     num = 0;
     start = csr_eptr[primal_vertex];

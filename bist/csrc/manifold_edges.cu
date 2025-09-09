@@ -367,7 +367,7 @@ void manifold_edges(PointCloudData& data){
         printf("No non-manifold edges.\n");
         return; 
     } // no non-manifold edges
-    //printf("num_invalid: %d\n",num_invalid);
+    printf("num_invalid: %d\n",num_invalid);
     int NumThreads = 512;
     int UniqEdgeBlocks = ceil( double(E_uniq) / double(NumThreads));
 

@@ -590,10 +590,23 @@ bool ScanNetScene::write_ply(const std::filesystem::path& ply_file, PointCloudDa
             unsigned char num = end - start;
             //if (num == 0){ continue; }
             file.write(reinterpret_cast<const char*>(&num), sizeof(unsigned char));
+
+            // bool any_zero = false;
+            // for (int index = start; index < end; index++){
+            //     any_zero = any_zero || (data.faces[index] == 0);
+            // }
+
+            // if (any_zero){
+            //     printf("Num: face[%d] %d\n",face,end-start);
+            // }
             for (int index = start; index < end; index++){
                 int v = data.faces[index];
+                // if (any_zero){
+                //     printf("face[%d] %d\n",face,v);
+                // }
                 file.write(reinterpret_cast<const char*>(&v), sizeof(int));
             }
+
             if(!data.face_colors.empty()){
                 uint32_t label = 0;
                 if (!data.face_labels.empty()){
