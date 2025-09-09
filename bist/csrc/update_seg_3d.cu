@@ -69,9 +69,10 @@ __host__ void update_seg(spix_params* aos_params, spix_helper* sp_helper, PointC
         for (int graph_color_index=0; graph_color_index < data.gchrome; graph_color_index++){
 
             //approximate_articulation_points<<<ArtNumBlocks,ArtNumThreads>>>(spix,data.csr_edges_ptr(),data.csr_eptr_ptr(),is_simple_point,neigh_neq,data.V);
+            approximate_articulation_points<<<VertexBlocks,NumThreads>>>(spix,border,data.csr_edges_ptr(),data.csr_eptr_ptr(),is_simple_point,neigh_neq,data.gcolors_ptr(),graph_color_index,data.V);
             // gpuErrchk( cudaPeekAtLastError() );
             // gpuErrchk( cudaDeviceSynchronize() );
-            // printf("step.\n");
+            //printf("step.\n");
 
             update_seg_subset<<<VertexBlocks,NumThreads>>>(aos_params,spix,border,is_simple_point,
                                                           data.ftrs_ptr(),data.pos_ptr(),neigh_neq,
@@ -121,6 +122,13 @@ void update_seg_subset(spix_params* params, uint32_t* spix,
     // -- iterate over neighbors --
     uint32_t start = csr_ptr[vertex];
     uint32_t end = csr_ptr[vertex+1];
+
+    // -- info [remove me soon] --
+    // if ((end - start) > 3){
+    //     printf("vertex[%d]: # of edges %d %d\n",vertex,start,end);
+    // }
+    // assert( (end - start) <= 3);
+
     for(uint32_t index=start; index < end; index++){
         uint32_t neigh = csr_edges[index];
         uint32_t spix_neigh = spix[neigh];

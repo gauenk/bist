@@ -75,7 +75,52 @@ __device__ void upper_strict_from_index(uint32_t n, int i, int& row, int& col) {
     col = (n2 - 1) - cprime + 1;             // shift right by 1 to skip the diagonal
 }
 
+
+
 __global__ void approximate_articulation_points(
+    const uint32_t* labels,  // Cluster Labels
+    const bool*     border,
+    const uint32_t* csr_edges,           // 1-hop neighbor data
+    const uint32_t* csr_ptr,             // CSR pointers
+    bool* is_simple_point,                // Output: true if simple point
+    uint8_t* num_neq, // Output: Num p
+    uint8_t* gcolors,
+    uint8_t gchrome,
+    uint32_t V                   // Number of vertices
+) {
+    
+
+    // Warp and thread identification
+    uint32_t vertex = (blockIdx.x * blockDim.x + threadIdx.x);
+    if (vertex >= V) return;
+
+    uint32_t my_label = labels[vertex];
+    uint8_t gcolor = gcolors[vertex];
+    if (gcolor != gchrome){ return; }
+    if (!border[vertex]) { return; }
+
+    uint32_t start = csr_ptr[vertex];
+    uint32_t end = csr_ptr[vertex+1];
+    // if ((end - start) > 3){
+    //     printf("vertex[%d]: # of edges %d %d\n",vertex,start,end);
+    // }
+    assert( (end - start) <= 3);
+    //bool any_neq = false;
+    uint8_t num_neq_v = 0;
+    for(int index = start; index < end; index++){
+        uint32_t neigh = csr_edges[index];
+        uint32_t neigh_vertex = labels[neigh];
+        num_neq_v += neigh_vertex != my_label;
+    }
+
+    num_neq[vertex] = num_neq_v;
+    is_simple_point[vertex] = num_neq_v == 1;
+    
+ 
+}
+
+
+__global__ void approximate_articulation_points_v0(
     const uint32_t* labels,  // Cluster Labels
     const uint32_t* csr_edges,           // 1-hop neighbor data
     const uint32_t* csr_ptr,             // CSR pointers
