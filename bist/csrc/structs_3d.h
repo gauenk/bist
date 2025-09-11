@@ -251,13 +251,14 @@ struct SpixMetaData {
     float split_alpha;
     int target_nspix;
     int nspix_buffer_mult;
+    bool use_dual;
     
     // Could be const after initialization
     SpixMetaData(int niters, int niters_seg, int sm_start, 
                  float data_scale, int sp_size,
                  float sigma2_app, float sigma2_size, float potts,
                  float alpha, float split_alpha, int target_nspix,
-                 int nspix_buffer_mult) :
+                 int nspix_buffer_mult, bool use_dual) :
         niters(niters)
         , niters_seg(niters_seg)
         , sm_start(sm_start)
@@ -270,6 +271,7 @@ struct SpixMetaData {
         , split_alpha(split_alpha)
         , target_nspix(target_nspix)
         , nspix_buffer_mult(nspix_buffer_mult)
+        , use_dual(use_dual)
     {}
 };
 

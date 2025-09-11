@@ -32,6 +32,19 @@ initial_interpolation(float3* ftrs, float3* pos, uint32_t* dual_faces, uint32_t*
     pos_f.y = (pos0.y + pos1.y + pos2.y)/3;
     pos_f.z = (pos0.z + pos1.z + pos2.z)/3;
 
+    // -- better feature interpolation --
+    // float3 ftrs_f = ftrs0;
+    // float3 pos_ftrs = pos0;
+    // if (pos_ftrs.z < pos1.z){
+    //     ftrs_f = ftrs1;
+    //     pos_ftrs = pos1;
+    // }
+    // if(pos_ftrs.z < pos2.z){
+    //     ftrs_f = ftrs2;
+    //     pos_ftrs = pos2;
+    // }
+
+    // -- naive interpolation; destroys sharp features --
     float3 ftrs_f;
     ftrs_f.x = (ftrs0.x + ftrs1.x + ftrs2.x)/3;
     ftrs_f.y = (ftrs0.y + ftrs1.y + ftrs2.y)/3;

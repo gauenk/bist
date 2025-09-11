@@ -64,6 +64,7 @@ int main(int argc, char **argv) {
     const char* data_name = "scannetv2";
     int nscenes = 0;
     int batchsize = 1;
+    int _rgb2lab = 1;
 
     // -- mesh config params --
     int _use_dual = 1;
@@ -111,6 +112,7 @@ int main(int argc, char **argv) {
             !parse_argument(i, argc, argv, arg, "-d", data_name) ||
             !parse_argument(i, argc, argv, arg, "-n", nscenes) ||
             !parse_argument(i, argc, argv, arg, "-b", batchsize) ||
+            !parse_argument(i, argc, argv, arg, "--rgb2lab", _rgb2lab) ||
             // -- mesh modification parameters --
             !parse_argument(i, argc, argv, arg, "--dual", _use_dual) ||
             // -- core superpixel parameters --
@@ -159,6 +161,7 @@ int main(int argc, char **argv) {
     // -- control the number of spix --
     int nbatch = 1;
     int nftrs = 3;
+    bool use_rgb2lab = (_rgb2lab == 1);
     bool use_dual = (_use_dual == 1);
     bool use_sm = (_use_sm == 1);
     bool controlled_nspix = (target_nspix > 0);
@@ -176,7 +179,8 @@ int main(int argc, char **argv) {
 
     // -- create argument struct --
     SpixMetaData args{niters, niters_seg, sm_start, data_scale, sp_size,
-                     sigma2_app, sigma2_size, potts, alpha, split_alpha, target_nspix, nspix_buffer_mult};
+                     sigma2_app, sigma2_size, potts, alpha, split_alpha, target_nspix, 
+                    nspix_buffer_mult, use_dual};
 
     // -- allow for batching --
     int nbatches = nscenes / batchsize;
@@ -199,7 +203,7 @@ int main(int argc, char **argv) {
             int e_index = std::min((_ix+1)*batchsize, (int)scene_files.size());
             std::vector<std::filesystem::path> scene_files_b(scene_files.begin() + s_index, scene_files.begin() + e_index);
             //auto read_out = read_scene(scene_files_b);
-            PointCloudData data  = read_scene(scene_files_b);
+            PointCloudData data  = read_scene(scene_files_b,use_rgb2lab);
 
             // -- enforce manifold edges --
             if (use_dual){
@@ -307,13 +311,14 @@ int main(int argc, char **argv) {
             // // cudaMemset(border_data.border_ptr(), 0, border_data.V*sizeof(bool));
             // // set_border(border_data.labels_ptr(), border_data.border_ptr(), border_data.csr_edges_ptr(),border_data.csr_eptr_ptr(),border_data.V);
             // filter_to_border_edges(border_data);
+            PointCloudData dual_raw = dual.copy();
             PointCloudData border_data = get_border_data(data,dual,params,params.nspix_sum,use_dual);
 
 
             // -- write and free --
             //bool succ = write_scene(scene_files_b,output_root,data);
             //succ = write_spix(scene_files_b,output_root,params);
-            cudaDeviceSynchronize();
+            //cudaDeviceSynchronize();
 
             // -- write labeled mesh, spix, and dual mesh --
             for (int batch_index=0; batch_index < data.B; batch_index++){
@@ -330,6 +335,7 @@ int main(int argc, char **argv) {
                 std::filesystem::path mesh_fname = write_path / (scene_name + "_vh_clean_2.ply");
                 std::filesystem::path border_fname = write_path / (scene_name + "_border.ply");
                 std::filesystem::path dual_fname = write_path / (scene_name + "_dual.ply");
+                std::filesystem::path dual_raw_fname = write_path / (scene_name + "_dual_raw.ply");
                 std::filesystem::path dual_edge_fname = write_path / (scene_name + "_dual_edges.ply");
                 std::filesystem::path spix_fname = write_path / (scene_name + "_spix.ply");
                 std::cout << mesh_fname << std::endl;
@@ -338,15 +344,16 @@ int main(int argc, char **argv) {
                 PointCloudDataHost host_data(data,batch_index);
                 PointCloudDataHost host_border_data(border_data,batch_index);
                 PointCloudDataHost host_dual(dual,batch_index);
+                PointCloudDataHost host_dual_raw(dual_raw,batch_index);
                 SuperpixelParams3dHost host_spix(params,batch_index);
 
                 // -- write mesh scene --
-                if(!scene.write_ply(mesh_fname,host_data)){
+                if(!scene.write_ply(mesh_fname,host_data,use_rgb2lab)){
                     exit(1);
                 }
         
                 // -- write border scene --
-                if(!scene.write_ply(border_fname,host_border_data,true,false)){
+                if(!scene.write_ply(border_fname,host_border_data,use_rgb2lab,true,false)){
                     exit(1);
                 }
 
@@ -377,12 +384,17 @@ int main(int argc, char **argv) {
 
 
                 // -- write dual scene --
-                if(!scene.write_ply(dual_fname,host_dual,true,true)){
+                if(!scene.write_ply(dual_fname,host_dual,use_rgb2lab,true,true)){
+                    exit(1);
+                }
+
+                // -- write dual raw scene --
+                if(!scene.write_ply(dual_raw_fname,host_dual_raw,use_rgb2lab,true,true)){
                     exit(1);
                 }
 
                 // -- write dual scene --
-                if(!scene.write_ply(dual_edge_fname,host_dual,true,false)){
+                if(!scene.write_ply(dual_edge_fname,host_dual,use_rgb2lab,true,false)){
                     exit(1);
                 }
 

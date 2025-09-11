@@ -77,7 +77,133 @@ __device__ void upper_strict_from_index(uint32_t n, int i, int& row, int& col) {
 
 
 
-__global__ void approximate_articulation_points(
+
+// __global__ void approximate_articulation_points(
+//     const uint32_t* labels,  // Cluster Labels
+//     const bool*     border,
+//     const float3* pos,
+//     const uint32_t* csr_edges,           // 1-hop neighbor data
+//     const uint32_t* csr_ptr,             // CSR pointers
+//     bool* is_simple_point,                // Output: true if simple point
+//     uint8_t* num_neq, // Output: Num p
+//     uint8_t* gcolors,
+//     uint8_t gchrome,
+//     uint32_t V                   // Number of vertices
+// ) {
+    
+
+//     // Warp and thread identification
+//     uint32_t vertex = (blockIdx.x * blockDim.x + threadIdx.x);
+//     if (vertex >= V) return;
+
+//     uint32_t my_label = labels[vertex];
+//     uint8_t gcolor = gcolors[vertex];
+//     if (gcolor != gchrome){ return; }
+//     if (!border[vertex]) { return; }
+
+//     uint32_t start = csr_ptr[vertex];
+//     uint32_t end = csr_ptr[vertex+1];
+//     // if ((end - start) > 3){
+//     //     printf("vertex[%d]: # of edges %d %d\n",vertex,start,end);
+//     // }
+//     assert( (end - start) <= 3);
+//     //bool any_neq = false;
+//     uint8_t num_eq = 0;
+//     uint8_t num_neq_v = 0;
+//     uint32_t eq_neigh[2];
+//     for(int index = start; index < end; index++){
+//         uint32_t neigh = csr_edges[index];
+//         uint32_t neigh_vertex = labels[neigh];
+//         bool neq = neigh_vertex != my_label;
+//         num_neq_v += neq;
+//         if (!neq){
+//             if(num_eq < 2){
+//                 eq_neigh[num_eq] = neigh;
+//             }
+//             num_eq = num_eq + 1;
+//         }
+//     }
+    
+//     // -- .. --
+//     assert(num_eq <= 2);
+//     if (num_eq == 1){
+//         is_simple_point[vertex] = 0;
+//         return;
+//     }
+
+//     // -- .. --
+//     bool all_eq = true;
+//     for(int neigh_ix=0; neigh_ix < 2; neigh_ix++){
+//         uint32_t neigh = eq_neigh[neigh_ix];
+//         uint32_t start = csr_ptr[neigh];
+//         uint32_t end = csr_ptr[neigh+1];
+//         bool found_neq = false;
+//         for(int index = start; index < end; index++){
+//             uint32_t nneigh = csr_edges[index];
+//             uint32_t nneigh_vertex = labels[nneigh];
+//             bool neq = nneigh_vertex != my_label;
+//             found_neq = found_neq || neq;
+//         }
+//         all_eq = all_eq && (!found_neq);
+//     }
+
+
+//     is_simple_point[vertex] = 1;
+// }
+
+
+__device__
+float get_angle(float3 origin, float3 pos0, float3 pos1){
+    float3 v0 = make_float3(pos0.x - origin.x, pos0.y - origin.y, pos0.z - origin.z);
+    float3 v1 = make_float3(pos1.x - origin.x, pos1.y - origin.y, pos1.z - origin.z);
+    float dot = v0.x*v1.x + v0.y*v1.y + v0.z*v1.z;
+    float len0 = sqrtf(v0.x*v0.x + v0.y*v0.y + v0.z*v0.z);
+    float len1 = sqrtf(v1.x*v1.x + v1.y*v1.y + v1.z*v1.z);
+    float cos_angle = dot / (len0 * len1 + 1e-6);
+    cos_angle = fminf(fmaxf(cos_angle,-1.0f),1.0f);
+    float angle = acosf(cos_angle);
+    return angle;
+}
+
+__device__
+float get_signed_angle(float3 origin, float3 from, float3 to, float3 face_normal) {
+    // Vectors from origin
+    float3 v1 = make_float3(from.x - origin.x, from.y - origin.y, from.z - origin.z);
+    float3 v2 = make_float3(to.x - origin.x, to.y - origin.y, to.z - origin.z);
+    
+    // Normalize
+    float len1 = sqrtf(v1.x*v1.x + v1.y*v1.y + v1.z*v1.z) + 1e-6f;
+    float len2 = sqrtf(v2.x*v2.x + v2.y*v2.y + v2.z*v2.z) + 1e-6f;
+    v1.x /= len1; v1.y /= len1; v1.z /= len1;
+    v2.x /= len2; v2.y /= len2; v2.z /= len2;
+    
+    // Cross product
+    float3 cross = make_float3(
+        v1.y*v2.z - v1.z*v2.y,
+        v1.z*v2.x - v1.x*v2.z,
+        v1.x*v2.y - v1.y*v2.x
+    );
+    
+    // Dot product
+    float dot = v1.x*v2.x + v1.y*v2.y + v1.z*v2.z;
+    dot = fminf(fmaxf(dot, -1.0f), 1.0f);
+    
+    // Angle magnitude
+    float cross_mag = sqrtf(cross.x*cross.x + cross.y*cross.y + cross.z*cross.z);
+    float angle = atan2f(cross_mag, dot);
+    
+    // Determine sign using face normal
+    float normal_dot = cross.x*face_normal.x + cross.y*face_normal.y + cross.z*face_normal.z;
+    if (normal_dot < 0) {
+        angle = 2.0f * M_PI - angle;  // Make it the "other direction"
+    }
+    
+    return angle;
+}
+
+
+
+__global__ void approximate_articulation_points_v1(
     const uint32_t* labels,  // Cluster Labels
     const bool*     border,
     const uint32_t* csr_edges,           // 1-hop neighbor data
@@ -104,19 +230,165 @@ __global__ void approximate_articulation_points(
     // if ((end - start) > 3){
     //     printf("vertex[%d]: # of edges %d %d\n",vertex,start,end);
     // }
-    assert( (end - start) <= 3);
+    //assert( (end - start) <= 3);
     //bool any_neq = false;
+    uint8_t num = 0;
     uint8_t num_neq_v = 0;
+    uint8_t num_eq_v = 0;
     for(int index = start; index < end; index++){
         uint32_t neigh = csr_edges[index];
         uint32_t neigh_vertex = labels[neigh];
-        num_neq_v += neigh_vertex != my_label;
+        bool eq = neigh_vertex == my_label;
+        num_neq_v += !eq;
+        num_eq_v += eq;
+        num = num + 1;
     }
 
     num_neq[vertex] = num_neq_v;
-    is_simple_point[vertex] = num_neq_v == 1;
+    float comp = max(1.0,0.2*(num));
+    bool cond_b = (num_eq_v == 1) && (num >= 2); // retract the snakes
+    is_simple_point[vertex] = (num_neq_v <= comp) || cond_b;
     
  
+}
+
+
+__global__ void approximate_articulation_points_v2( // travel over face
+    const uint32_t* labels,  // Cluster Labels
+    const bool*     border,
+    const float3* pos,
+    const uint32_t* csr_edges,           // 1-hop neighbor data
+    const uint32_t* csr_ptr,             // CSR pointers
+    bool* is_simple_point,                // Output: true if simple point
+    uint8_t* num_neq, // Output: Num p
+    uint8_t* gcolors,
+    uint8_t gchrome,
+    uint32_t V                   // Number of vertices
+) {
+    
+
+    // Warp and thread identification
+    uint32_t vertex = (blockIdx.x * blockDim.x + threadIdx.x);
+    if (vertex >= V) return;
+
+    uint32_t my_label = labels[vertex];
+    uint8_t gcolor = gcolors[vertex];
+    if (gcolor != gchrome){ return; }
+    if (!border[vertex]) { return; }
+
+    uint32_t start = csr_ptr[vertex];
+    uint32_t end = csr_ptr[vertex+1];
+    // if ((end - start) > 3){
+    //     printf("vertex[%d]: # of edges %d %d\n",vertex,start,end);
+    // }
+    assert( (end - start) <= 3);
+    //bool any_neq = false;
+    uint8_t num_eq = 0;
+    uint8_t num_neq_v = 0;
+    float3 pos0;
+    float3 pos1;
+    uint32_t pos_neigh[2];
+    for(int index = start; index < end; index++){
+        uint32_t neigh = csr_edges[index];
+        uint32_t neigh_vertex = labels[neigh];
+        bool neq = neigh_vertex != my_label;
+        num_neq_v += neq;
+        if (!neq){
+            if(num_eq == 0){
+                pos0 = pos[neigh];
+                pos_neigh[0] = neigh;
+            }else if(num_eq == 1){
+                pos1 = pos[neigh];
+                pos_neigh[1] = neigh;
+            }
+            num_eq = num_eq + 1;
+        }
+    }
+
+    num_neq[vertex] = num_neq_v;
+    if (num_eq != 2){ 
+        is_simple_point[vertex] = 0;
+        return; 
+    }
+    // is_simple_point[vertex] = (num_neq_v == 1;
+
+    // -- traverse face init --
+    uint8_t MAX_STEPS = 32;
+    uint8_t step = 0;
+    float3 pos_v = pos[vertex];
+
+    // -- get face normal --
+    float3 face_normal;
+    {
+        // Face normal from cross product
+        float3 v1 = make_float3(pos0.x - pos_v.x, pos0.y - pos_v.y, pos0.z - pos_v.z);
+        float3 v2 = make_float3(pos1.x - pos_v.x, pos1.y - pos_v.y, pos1.z - pos_v.z);
+        face_normal = make_float3(
+            v1.y*v2.z - v1.z*v2.y,
+            v1.z*v2.x - v1.x*v2.z,
+            v1.x*v2.y - v1.y*v2.x
+        );
+
+        // Normalize it
+        float len = sqrtf(face_normal.x*face_normal.x + face_normal.y*face_normal.y + face_normal.z*face_normal.z);
+        face_normal.x /= len; face_normal.y /= len; face_normal.z /= len;
+    }
+    
+    // -- .. --
+    float angle = get_signed_angle(pos_v,pos0,pos1,face_normal);
+    assert(angle < M_PI);
+
+    // -- .. --
+    float3 curr_pos = pos1; // start from pos1
+    float3 prev_pos = pos_v; // start from pos1
+    uint32_t curr_neigh = pos_neigh[1];
+    uint32_t prev_neigh = vertex;
+
+    while(curr_neigh != pos_neigh[0]){
+
+        uint32_t start = csr_ptr[curr_neigh];
+        uint32_t end = csr_ptr[curr_neigh+1];
+
+        float curr_angle = 100000.f;
+        uint32_t next_neigh = UINT32_MAX;
+        float3 next_pos = make_float3(0,0,0);
+
+        for(int index = start; index < end; index++){
+            uint32_t neigh = csr_edges[index];
+            if (neigh == prev_neigh) { continue; } // don't go back
+
+            uint32_t neigh_label = labels[neigh];
+            if(neigh_label != my_label){ continue; } // only stay in same label
+            
+            next_pos = pos[neigh];
+            angle = get_signed_angle(curr_pos,prev_pos,next_pos,face_normal);
+            if (angle < curr_angle){
+                next_neigh = neigh;
+            }
+        }
+
+        // -- terminate if failed to find next neighbor --
+        if (next_neigh == UINT32_MAX){
+            is_simple_point[vertex] = 0;
+            return;
+        }
+
+        // -- update --
+        prev_pos = curr_pos;
+        prev_neigh = curr_neigh;
+        curr_pos = pos[next_neigh];
+        curr_neigh = next_neigh;
+
+        // -- safety --
+        step+=1;
+        if(step > MAX_STEPS){
+            is_simple_point[vertex] = 0;
+            return;
+        }
+    }
+
+    //printf("simple!\n");
+    is_simple_point[vertex] = 1;
 }
 
 
