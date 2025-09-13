@@ -388,21 +388,18 @@ def get_faces(voxels):
 
     return faces
 
-def export_obj_with_colors(vertices, faces, colors, filename="voxels.obj"):
-    with open(filename, 'w') as f:
-        for v, c in zip(vertices.cpu().numpy(), colors.cpu().numpy()):
-            f.write(f"v {v[0]} {v[1]} {v[2]} {c[0]} {c[1]} {c[2]}\n")
-        for face in faces.cpu().numpy():
-            f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1}\n")
-
 def export_binary_ply(vertices, colors, edges, filename="voxels_binary.ply"):
 
     print(filename)
+    print(edges.shape)
+    edges = th.unique(edges,dim=0)
+    print(edges.shape)
 
     vertices = vertices.cpu().numpy()
     colors = colors.cpu().numpy()
     edges = edges.cpu().numpy()
     # faces = faces.cpu().numpy()
+    # edges = edges[:10]
 
     with open(filename, 'wb') as f:
         # Write header
@@ -411,10 +408,13 @@ def export_binary_ply(vertices, colors, edges, filename="voxels_binary.ply"):
         f.write(f"element vertex {len(vertices)}\n".encode())
         f.write(b"property float x\nproperty float y\nproperty float z\n")
         f.write(b"property uchar red\nproperty uchar green\nproperty uchar blue\n")
+
         f.write(f"element edge {len(edges)}\n".encode())
         f.write(b"property int vertex1\nproperty int vertex2\n")
+
         # f.write(f"element face {len(faces)}\n".encode())
         # f.write(b"property list uchar int vertex_indices\n")
+
         f.write(b"end_header\n")
 
         # Write vertex data
@@ -423,6 +423,7 @@ def export_binary_ply(vertices, colors, edges, filename="voxels_binary.ply"):
 
         # Write edges
         for e in edges:
+            # print(e[0],e[1],vertices[e[0]],vertices[e[1]])
             f.write(struct.pack('<ii', e[0], e[1]))
 
         # # Write faces (as lists: uchar=3 vertices per face, followed by 3 ints)
@@ -431,7 +432,7 @@ def export_binary_ply(vertices, colors, edges, filename="voxels_binary.ply"):
 
     print("Binary PLY export complete!")
 
-def get_sparse_voxels(verts,colors,res):
+def get_sparse_voxels(pos,colors,res):
 
     
     # verts: (V, 3)
@@ -440,6 +441,7 @@ def get_sparse_voxels(verts,colors,res):
     # -- normalize verts --
     # print(verts.shape)
     # verts = verts - verts.mean(dim=1,keepdim=True)
+    verts = pos.clone()
     verts = verts - th.min(verts,dim=0).values
     verts = verts / th.max(th.max(verts,dim=0).values)
     # print(th.max(verts,dim=0).values)
@@ -454,6 +456,7 @@ def get_sparse_voxels(verts,colors,res):
     print(colors.shape,lin_idx.shape)
     
     # Aggregate features per voxel (mean of all verts that fall into that voxel)
+    pos_per_voxel = scatter_mean(pos, lin_idx, dim=0, dim_size=res**3)
     feat_per_voxel = scatter_mean(colors, lin_idx, dim=0, dim_size=res**3)
     
     # Get coordinates of non-empty voxels
@@ -483,44 +486,68 @@ def get_neighbors(coords,box):
 
     # -- .. --
     # coords: (N,3), integers
+    coords = coords[:,1:] # was 4d
     N = coords.shape[0]
     coords = coords.int()
-    print("All >=0 ? ",th.all(coords>=0))
-    scale = 10000  # make sure it's larger than max grid size per axis
+    # print("All >=0 ? ",th.all(coords>=0))
+
+    # -- get keys --
     X,Y,Z = box
-    keys = coords[:,1] * Y*Z + coords[:,2] * Y + coords[:,3]
-    print(keys.min(),keys.max())
+    X,Y,Z = 256,256,256
+    keys = coords[:,0] * Y*Z + coords[:,1] * Y + coords[:,2]
+    # print(keys.min(),keys.max())
+    # print(keys)
+    keys = keys.int()
+    # print(keys.min(),keys.max())
+
 
     # -- keep hash --
     dev = torch.device("cuda:0")
     k_dtype = torch.int32 
     v_dtype = torch.int64
     table = HashTable(dev, torch.int32, torch.int64, max_size=N*2)
-    table.insert(keys.to(torch.int32), torch.arange(N, device=dev, dtype=torch.int64))
+    table.insert(keys.to(torch.int32), torch.arange(N, device=dev, dtype=torch.int64)+1)
 
     # -- all offsets --
     all_offsets = torch.tensor([[dx, dy, dz] 
                                 for dx in [-1,0,1] 
                                 for dy in [-1,0,1] 
                                 for dz in [-1,0,1]], device=dev, dtype=torch.int32)
-
-    # Remove the zero offset (0,0,0)
-    offsets = all_offsets[~((all_offsets == 0).all(dim=1))]  # shape (26,3)
-    offsets = offsets.cuda()
-    zeros = th.zeros_like(offsets[:,:1])
-    offsets = th.cat([zeros,offsets],axis=-1)
+    offsets = all_offsets[~((all_offsets == 0).all(dim=1))].cuda() # shape (26,3)
+    # print(offsets)
     
+    # print("^"*20)
     # compute neighbor coordinates
     coords_exp = coords[:, None, :] + offsets[None, :, :]  # (N,26,3)
-    neighbor_keys = coords_exp[:,:,1] * Y*Z + coords_exp[:,:,2] * Y + coords_exp[:,:,3]
+    # valid = th.all(coords_exp >= 0,-1)
+    # print(coords_exp[0])
+    # print(valid[0])
+    neighbor_keys = coords_exp[:,:,0] * Y*Z + coords_exp[:,:,1] * Y + coords_exp[:,:,2]
+    # valid = (neighbor_keys >= 0).int()
     neighbor_keys = neighbor_keys.to(torch.int32)
     
     # query table
+    # print("."*20)
+    # print(valid[0])
+    # print(coords_exp[0])
+    # print(neighbor_keys[0])
     neighbor_idx, _ = table.query(neighbor_keys.flatten())
-    neighbor_idx = neighbor_idx.view(N, offsets.shape[0])  # (N,26)
+    assert(th.all(neighbor_idx>=0))
+    neighbor_idx = neighbor_idx.view(N, offsets.shape[0])-1  # (N,26)
+    valid = (neighbor_idx >= 0).int()
+    # print(neighbor_idx)
+    # print(valid)
+    neighbor_idx = (neighbor_idx * valid) + N*(1-valid)
+    # print(neighbor_idx.shape)
+    # print(valid.shape)
     # print(neighbor_idx[:2])
     # print(th.sum(neighbor_idx < N))
+    # print(neighbor_idx)
+    print(neighbor_idx[0])
+    print(valid[0])
+    print(N)
 
+    # exit()
     return neighbor_idx
 
 def get_edges(neigh):
@@ -614,15 +641,22 @@ def mesh_to_voxel():
         features=ftrs,indices=indices,
         spatial_shape=[res,res,res],batch_size=1)
 
+    # -- info --
+    print("."*20)
+    print("."*20)
+    print(pos.shape)
+    print(ftrs.shape)
+    print(indices.shape)
+    print("."*20)
+    print("."*20)
+
     # -- get edges --
     neigh = get_neighbors(indices,box)
     edges = get_edges(neigh)
-    # print(edges)
-    # print(th.sum(edges>=edges.shape[0]))
-    print("."*10)
+    print(neigh[:2])
+    print(edges[:10])
     rowptr, col = get_csr(edges)
-    print(edges)
-
+    # print(edges)
 
     # -- info --
     print(edges.shape)
@@ -637,7 +671,11 @@ def mesh_to_voxel():
     # 
 
     # faces = get_faces(indices)
-    export_binary_ply(pos,colors,edges,scene_name+"_voxel.ply")
+    # export_binary_ply(pos,colors,edges,scene_name+"_voxel.ply")
+    print(indices.shape)
+    print("."*10)
+    indices = indices[:,1:]
+    export_binary_ply(indices,ftrs,edges,scene_name+"_voxel.ply")
 
     #
     # -- run clustering --
