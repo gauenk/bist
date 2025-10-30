@@ -69,9 +69,13 @@ __host__ void update_seg(spix_params* aos_params, spix_helper* sp_helper, PointC
         for (int graph_color_index=0; graph_color_index < data.gchrome; graph_color_index++){
 
             //approximate_articulation_points<<<ArtNumBlocks,ArtNumThreads>>>(spix,data.csr_edges_ptr(),data.csr_eptr_ptr(),is_simple_point,neigh_neq,data.V);
+            if (args.use_dual){
+                //approximate_articulation_points_v0<<<VertexBlocks,NumThreads>>>(spix,border,data.pos_ptr(),data.csr_edges_ptr(),data.csr_eptr_ptr(),is_simple_point,neigh_neq,data.gcolors_ptr(),graph_color_index,data.V);
+            }
+            //approximate_articulation_points_v1<<<VertexBlocks,NumThreads>>>(spix,border,data.csr_edges_ptr(),data.csr_eptr_ptr(),is_simple_point,neigh_neq,data.gcolors_ptr(),graph_color_index,data.V);
             // gpuErrchk( cudaPeekAtLastError() );
             // gpuErrchk( cudaDeviceSynchronize() );
-            // printf("step.\n");
+            //printf("step.\n");
 
             update_seg_subset<<<VertexBlocks,NumThreads>>>(aos_params,spix,border,is_simple_point,
                                                           data.ftrs_ptr(),data.pos_ptr(),neigh_neq,
@@ -108,6 +112,10 @@ void update_seg_subset(spix_params* params, uint32_t* spix,
         return; // try again another day!
     }
 
+    // -- read labels of neighbors --
+    constexpr int MAX_NEIGHS = 32;
+    uint32_t neighs_labels[MAX_NEIGHS] = {0};
+    
     // -- compare all uniq points --
     uint32_t spix_id = spix[vertex];
     float3 v_ftrs = ftrs[vertex];
@@ -121,18 +129,46 @@ void update_seg_subset(spix_params* params, uint32_t* spix,
     // -- iterate over neighbors --
     uint32_t start = csr_ptr[vertex];
     uint32_t end = csr_ptr[vertex+1];
+
+    // -- read neighbor labels --
+    int num_neighs = 0;
     for(uint32_t index=start; index < end; index++){
         uint32_t neigh = csr_edges[index];
         uint32_t spix_neigh = spix[neigh];
-        uint8_t num_neq = neigh_neq[neigh];
-        if (curr_spix == spix_neigh){ continue; }
+        neighs_labels[num_neighs] = spix_neigh;
+        num_neighs++;
+    }
+
+
+    // -- info [remove me soon] --
+    // if ((end - start) > 3){
+    //     printf("vertex[%d]: # of edges %d %d\n",vertex,start,end);
+    // }
+    // assert( (end - start) <= 3);
+    //uint8_t num_neq_v = neigh_neq[vertex];
+    int num = 0;
+    for(uint32_t index=start; index < end; index++){
+        uint32_t neigh = csr_edges[index];
+        uint32_t spix_neigh = neighs_labels[num];
+
+        uint32_t num_neq = 0;
+        for(int k=0; k<num_neighs; k++){
+            if (k == num) continue;
+            num_neq += spix_neigh != neighs_labels[k];
+        }
+
+        // uint32_t spix_neigh = spix[neigh];
+        //uint8_t num_neq = neigh_neq[neigh];
+        //if (curr_spix == spix_neigh){ continue; }
         
-        float neq = num_neq + (spix_neigh != spix_id); // # different neighbors with different labels if my label switches to neighbor's label
-        float neigh_lprob = compute_lprob(v_ftrs,v_pos,neq,params,spix_neigh,sigma2_app,potts_coeff);
+        // float neq = num_neq + (spix_neigh != spix_id); // # different neighbors with different labels if my label switches to neighbor's label
+        float neigh_lprob = compute_lprob(v_ftrs,v_pos,num_neq,params,spix_neigh,sigma2_app,potts_coeff);
         if (neigh_lprob > curr_lprob){
             curr_lprob = neigh_lprob;
             curr_spix = spix_neigh;
         }
+
+        num++;
     }
 
     spix[vertex] = curr_spix;
@@ -157,8 +193,8 @@ __device__ float compute_lprob(float3& ftrs, float3& pos, float neigh_neq,
 
     // -- appearance --
     float d_mu = (mu_app.x - ftrs.x) * (mu_app.x - ftrs.x) \
-                + (mu_app.y - ftrs.y) * (mu_app.x - ftrs.y) \                 
-                + (mu_app.y - ftrs.z) * (mu_app.x - ftrs.z);
+                + (mu_app.y - ftrs.y) * (mu_app.y - ftrs.y) \                 
+                + (mu_app.z - ftrs.z) * (mu_app.z - ftrs.z);
 
     float d_pos = \
         // Diagonal terms: x_i * ivar_i * x_i

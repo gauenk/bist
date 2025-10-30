@@ -17,7 +17,7 @@
 void filter_to_border_edges(PointCloudData& data);
 
 
-PointCloudData get_border_data(PointCloudData& primal, PointCloudData& dual, SuperpixelParams3d& spix_params, uint32_t S);
+PointCloudData get_border_data(PointCloudData& primal, PointCloudData& dual, SuperpixelParams3d& spix_params, uint32_t S, bool use_dual);
 thrust::device_vector<uint32_t> get_primal_labels(PointCloudData& primal, PointCloudData& dual); // <- this doesn't really belong here...
 void apply_spix_pooling(PointCloudData& data, SuperpixelParams3d& spix_params);
 

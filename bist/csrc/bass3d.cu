@@ -22,7 +22,7 @@
 
 // -- utils --
 #include "init_utils.h"
-#include "init_seg.h"
+#include "init_seg_3d.h"
 #include "flood_fill.h"
 #include "compact_spix_3d.h"
 #include "structs_3d.h"
@@ -104,20 +104,29 @@ SuperpixelParams3d run_bass3d(PointCloudData& data, SpixMetaData& args, Logger* 
 
     // -- init spix --
     SuperpixelParams3d params(data.V,data.B);
-
+    //return params;
     // -- init spix & compact  [ sets nspix within params ] --
-    uint32_t* init_nspix = init_seg_3d(params.spix_ptr(), data.pos_ptr(), data.vertex_batch_ids_ptr(), data.vptr_ptr(), data.bounding_boxes_ptr(), args.sp_size, data.B, data.V);
+    uint32_t* init_nspix = init_seg_3d(params.spix_ptr(), data.pos_ptr(), data.vertex_batch_ids_ptr(), data.vptr_ptr(), data.bounding_boxes_ptr(), args.data_scale, args.sp_size, data.B, data.V);
     run_compactify(params.nspix_ptr(), params.spix_ptr(), data.vertex_batch_ids_ptr(), params.prev_nspix_ptr(), init_nspix, data.B, data.V);
-    params.comp_csum_nspix();
-    cudaDeviceSynchronize();
     cudaFree(init_nspix);
+
+    // -- compute total number of superpixels and their accumulation for indexing --
+    params.comp_nspix_csum();
+    uint32_t nspix_sum = params.comp_nspix_sum();
+    params.set_nspix_sum(nspix_sum);
+    printf("nspix_sum: %d\n",nspix_sum);
+
+    // -- ensure clusters are contiguos --
+    flood_fill(data,params.spix_ptr(),params.nspix_ptr(),params.csum_nspix_ptr(),nspix_sum); // ensure contiguous clusters
+    params.comp_nspix_csum();
+    nspix_sum = params.comp_nspix_sum();
+    params.set_nspix_sum(nspix_sum);
+    printf("[post fill] nspix_sum: %d\n",nspix_sum);
 
     gpuErrchk( cudaPeekAtLastError() );
     gpuErrchk( cudaDeviceSynchronize() );
 
     // -- allocate memory --
-    int nspix_sum = params.comp_nspix_sum();
-    params.set_nspix_sum(nspix_sum);
     int nspix_max = params.nspix_sum*args.nspix_buffer_mult;
     printf("nspix_max: %d\n",nspix_max);
     const int sparam_size = sizeof(spix_params);
@@ -131,14 +140,6 @@ SuperpixelParams3d run_bass3d(PointCloudData& data, SpixMetaData& args, Logger* 
 
     // -- init sp_params --
     mark_active_init(sp_params,params.spix_ptr(),data.vertex_batch_ids_ptr(),params.csum_nspix_ptr(),data.V);
-
-    gpuErrchk( cudaPeekAtLastError() );
-    gpuErrchk( cudaDeviceSynchronize() );
-
-
-    // -- ensure clusters are contiguous --
-    update_params(sp_params,sp_helper,data,params,args,logger);
-    flood_fill(data,sp_params,params.spix_ptr(),params.csum_nspix_ptr(),nspix_sum);
 
     gpuErrchk( cudaPeekAtLastError() );
     gpuErrchk( cudaDeviceSynchronize() );

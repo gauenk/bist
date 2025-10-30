@@ -26,7 +26,7 @@ __global__ void count_and_assign_labels(
     uint32_t* max_new_csum,
     uint32_t* label2index_shell,
     uint32_t* relabel_map,
-    int nbatch, int nnodes) {
+    int nbatch, int nnodes, int S) {
 
     // one index per node
     int node_ix = blockIdx.x * blockDim.x + threadIdx.x;
@@ -34,12 +34,17 @@ __global__ void count_and_assign_labels(
     int bx = bids[node_ix];
     uint32_t label = labels[node_ix];
     uint32_t _nspix_old = nspix_old[bx];
+    assert(_nspix_old == 0); // dev only presently
     if (label < _nspix_old) { // skip me!
         return;
     }
    
     // Claim this slot
     int shell_index = (label - _nspix_old) + max_new_csum[bx];
+    if (shell_index >= S){
+        printf("S: %d, shell_index: %d\n",S,shell_index);
+    }
+    assert(shell_index < S);
     uint32_t old_label = atomicCAS(
         (unsigned int*)&label2index_shell[shell_index],
         UINT32_MAX, (unsigned int)label
@@ -107,7 +112,7 @@ void run_compactify(uint32_t* nspix, uint32_t* spix, uint8_t* bids, uint32_t* ns
     }
     uint32_t max_num_new;
     cudaMemcpy(&max_num_new,&max_new_csum[nbatch],sizeof(uint32_t),cudaMemcpyDeviceToHost);
-    //printf("max_new_csum[nbatch]: %d\n",max_num_new);
+    printf("max_new_csum[nbatch]: %d\n",max_num_new);
     
     // Step 2: Count unique hashes and create label map
     //ntotal_nspix = cusmum(nspix)[-1];
@@ -128,13 +133,14 @@ void run_compactify(uint32_t* nspix, uint32_t* spix, uint8_t* bids, uint32_t* ns
     cudaMemset(relabel_map, 0xFF, max_num_new * sizeof(uint32_t));
     // todo; relabel_map init to "-1"
    
+    printf("max_num_new: %d\n",max_num_new);
     dim3 count_block(256);
     dim3 count_grid((nnodes + count_block.x - 1) / count_block.x);
     count_and_assign_labels<<<count_grid, count_block>>>(
         spix,bids,
         nspix,nspix_old,max_new_csum,
         label2index_shell,relabel_map,
-        nbatch, nnodes);
+        nbatch, nnodes, max_num_new);
 
     // -- shift superpixels --
     // // -- shift params into correct location --

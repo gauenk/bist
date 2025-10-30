@@ -32,6 +32,19 @@ initial_interpolation(float3* ftrs, float3* pos, uint32_t* dual_faces, uint32_t*
     pos_f.y = (pos0.y + pos1.y + pos2.y)/3;
     pos_f.z = (pos0.z + pos1.z + pos2.z)/3;
 
+    // -- better feature interpolation --
+    // float3 ftrs_f = ftrs0;
+    // float3 pos_ftrs = pos0;
+    // if (pos_ftrs.z < pos1.z){
+    //     ftrs_f = ftrs1;
+    //     pos_ftrs = pos1;
+    // }
+    // if(pos_ftrs.z < pos2.z){
+    //     ftrs_f = ftrs2;
+    //     pos_ftrs = pos2;
+    // }
+
+    // -- naive interpolation; destroys sharp features --
     float3 ftrs_f;
     ftrs_f.x = (ftrs0.x + ftrs1.x + ftrs2.x)/3;
     ftrs_f.y = (ftrs0.y + ftrs1.y + ftrs2.y)/3;
@@ -126,19 +139,26 @@ place_faces(uint32_t* edges, uint32_t* count, const uint32_t* primal_faces, cons
         any = false;
         uint32_t v0 = primal_faces[3*face_index+ix];
         uint32_t v1 = primal_faces[3*face_index+((ix + 1) % 3)];
+        assert(v0 != v1);
         uint32_t jx0 = 0;
         // assert(v0 != v1);
 
-        // bool conda = (v0 == 295906) && (v1 == 296744);
-        // bool condb = (v1 == 295906) && (v0 == 296744);
+        // bool conda = (v0 == 12372) && (v1 == 81382);
+        // bool condb = (v1 == 12372) && (v0 == 81382);
+        // bool conda = (v0 == 81399) || (v1 == 81399);
+        // bool condb = false;
+        // bool cond = conda || condb;
         // if (conda || condb){
         //     printf("face_index, v0, v1: %d %d %d\n",face_index, v0, v1);
         // }
 
-
+        // if (cond){
+        //     printf("(%d,%d): csr_eptr[v0], csr_eptr[v0+1], csr_eptr[v1], csr_eptr[v1+1] (%d,%d,%d,%d)\n",v0,v1,csr_eptr[v0], csr_eptr[v0+1], csr_eptr[v1], csr_eptr[v1+1]);
+        // }
         uint32_t start = csr_eptr[v0];
         uint32_t end = csr_eptr[v0+1];
         for(int jx = start; jx < end; jx++){
+            //if(cond){ printf("(%d,%d) [%d] csr_edges[%d]: %d\n",v0,v1,v0,jx,csr_edges[jx]);}
             if(csr_edges[jx] == v1){
                 jx0 = jx;
                 any = true;
@@ -164,6 +184,7 @@ place_faces(uint32_t* edges, uint32_t* count, const uint32_t* primal_faces, cons
         end = csr_eptr[v1+1];
         for(int jx = start; jx < end; jx++){
             if(csr_edges[jx] == v0){
+                //if(cond){ printf("[%d] csr_edges[%d]: %d\n",v1,jx,csr_edges[jx]);}
                 any = true;
                 uint32_t old_label = atomicCAS(
                     (unsigned int*)&edges[jx],
@@ -197,25 +218,25 @@ place_faces(uint32_t* edges, uint32_t* count, const uint32_t* primal_faces, cons
                 break;
             }
         }
-        // if(!success){
-        //     printf("v0,v1: (%d,%d)\n",v0,v1);
+        if(!any){
+            //printf("v0,v1: (%d,%d)\n",v0,v1);
 
-        //     printf("neigh v0:");
-        //     start = csr_eptr[v0];
-        //     end = csr_eptr[v0+1];
-        //     for(int jx = start; jx < end; jx++){
-        //         printf(" %d",csr_edges[jx]);
-        //     }
-        //     printf("\n");
+            // printf("neigh v0:");
+            // start = csr_eptr[v0];
+            // end = csr_eptr[v0+1];
+            // for(int jx = start; jx < end; jx++){
+            //     printf(" %d",csr_edges[jx]);
+            // }
+            // printf("\n");
 
-        //     printf("neigh v1:");
-        //     start = csr_eptr[v1];
-        //     end = csr_eptr[v1+1];
-        //     for(int jx = start; jx < end; jx++){
-        //         printf(" %d",csr_edges[jx]);
-        //     }
-        //     printf("\n");
-        // }
+            // printf("neigh v1:");
+            // start = csr_eptr[v1];
+            // end = csr_eptr[v1+1];
+            // for(int jx = start; jx < end; jx++){
+            //     printf(" %d",csr_edges[jx]);
+            // }
+            // printf("\n");
+        }
         //assert(success && any);
         assert(any);
 
@@ -307,7 +328,7 @@ get_face_csr(uint32_t* csr_edges, uint32_t* csr_eptr, uint32_t* E, bool* flag, b
     }
 
     csr_eptr[face_index] = edge_count;
-    eflag[face_index] = edge_count>0;
+    eflag[face_index] = edge_count>0; // thinking; keep everyone? otherwise, i think we need to relabel... maybe not since csr_eptr catches this...
     //assert(edge_count>0);
     atomicAdd(E,edge_count);
 
@@ -324,10 +345,20 @@ get_uniq_edges(uint32_t* edges, uint32_t* write_offset, const uint32_t* csr_edge
     // -- .. --
     uint32_t start = csr_eptr[vertex];
     uint32_t end = csr_eptr[vertex+1];
+
+    // -- check --
+    // if (vertex == 563800){
+    //     printf("start end: %d %d\n",start,end);
+    // }
+
     assert ((end - start) <= 3);
     int num = 0;
     for(uint32_t index = start; index < end; index++){
         uint32_t neigh = csr_edges[index];
+        // if ((vertex > 0) && (neigh == 0)){
+        //     printf("[%d]: %d\n",vertex,neigh);
+        // }
+
         if (vertex >= neigh){ continue; }
         neighs[num] = neigh;
         num++;
@@ -387,8 +418,12 @@ construct_dual_faces(uint32_t* faces, uint32_t* faces_size, bool* flag, bool* fa
 	if (primal_vertex>=V) return;
 
     // -- allocate --
-    constexpr int MAX_NEIGHS = 32;
+    constexpr int MAX_NEIGHS = 32; // max degree of primal
     uint32_t neighs[MAX_NEIGHS] = {UINT32_MAX};
+    #pragma unroll
+    for (int i = 0; i < MAX_NEIGHS; i++) {
+        neighs[i] = UINT32_MAX;
+    }
 
     // -- get endpoints --
     uint32_t start = csr_eptr[primal_vertex];
@@ -406,7 +441,23 @@ construct_dual_faces(uint32_t* faces, uint32_t* faces_size, bool* flag, bool* fa
         num++;
     }
     neighs[num] = neighs[0];
+    // printf("neighs[num+1]: %d",neighs[num+1]);
 
+    // -- info --
+    // bool any_found = false;
+    // for (int index=0; index < num; index++){
+    //     bool conda = neighs[index] == 0;
+    //     bool condb = neighs[index] == 78188;
+    //     any_found = conda || condb;
+    // }
+
+    // for (int index=0; index < num; index++){
+    //     if(any_found){
+    //         printf("[%d] neigh[%d]: %d\n",primal_vertex,index,neighs[index]);
+    //     }
+    // }
+
+     
     // -- path traversal --
     bool success;
     int selected_ix;
@@ -447,6 +498,28 @@ construct_dual_faces(uint32_t* faces, uint32_t* faces_size, bool* flag, bool* fa
     }
     atomicAdd(F,1);
     
+
+    // -- info --
+    // int init_num = num;
+    // start = csr_eptr[primal_vertex];
+    // end = csr_eptr[primal_vertex+1];
+    // num = 0;
+    // bool any_found = false;
+    // for (int index = start; index < end; index++){
+    //     if (neighs[num+1] == UINT32_MAX){ break; }
+    //     bool conda = neighs[num] == 0;
+    //     bool condb = false;
+    //     any_found = conda || condb;
+    //     num++;
+    // }
+    // num = 0;
+    // for (int index = start; index < end; index++){
+    //     if(any_found){
+    //         printf("[%d,%d] neigh[%d]: %d\n",primal_vertex,init_num,index,neighs[num]);
+    //     }
+    //     num++;
+    // }
+
     // -- mark for keeping and write if successful --
     num = 0;
     start = csr_eptr[primal_vertex];
@@ -465,8 +538,7 @@ construct_dual_faces(uint32_t* faces, uint32_t* faces_size, bool* flag, bool* fa
 
 // todo: modify to allow for batching...
 PointCloudData create_dual_mesh(PointCloudData& data){
-
-
+    
     // -- allocate initial features --
     thrust::device_vector<float3> ftrs(data.F);
     float3* ftrs_dptr = thrust::raw_pointer_cast(ftrs.data());
@@ -495,15 +567,10 @@ PointCloudData create_dual_mesh(PointCloudData& data){
     // int* wo_dptr = thrust::raw_pointer_cast(write_offsets.data());
     // thrust::device_vector<uint32_t> face_edge_pairs(6*data.F,UINT32_MAX);
     // uint32_t* fe_dptr = thrust::raw_pointer_cast(face_edge_pairs.data());
-    thrust::device_vector<uint32_t> face_counts(data.V,0); // (at most) one dual face per primal vertex
+    thrust::device_vector<uint32_t> face_counts(data.V,0); // # faces a vertex touches
     uint32_t* fc_dptr = thrust::raw_pointer_cast(face_counts.data());
     initial_interpolation<<<FaceBlocks,NumThreads>>>(ftrs_dptr, pos_dptr, faces_dptr, fc_dptr, 
                                                     data.ftrs_ptr(), data.pos_ptr(), data.faces_ptr(), data.csr_eptr_ptr(), data.F);
-
-    // -- assign primal data face_colors for viz --
-    {
-        
-    }
 
 
     // -- get faces eptr --
@@ -532,6 +599,10 @@ PointCloudData create_dual_mesh(PointCloudData& data){
     place_faces<<<FaceBlocks,NumThreads>>>(e2f_dptr, ecounts_dptr, data.faces_ptr(), data.csr_edges_ptr(),  data.csr_eptr_ptr(), data.F, data.V);
     int max_count = *thrust::max_element(ecounts.begin(), ecounts.end());
     printf("max_count: %d\n",max_count);
+    if (max_count > 2){
+        printf("ERROR: mesh is non-manifold. Please modify this source code or manually clean-up the input mesh.\n");
+        exit(1);
+    }
         
     // -- get face csr-style edges --
     thrust::device_vector<uint32_t> csr_edges(3*data.F,UINT32_MAX); // I think should be 2*data.E but oh well...
@@ -700,6 +771,7 @@ PointCloudData create_dual_mesh(PointCloudData& data){
     // -- silly for now; mostly a lie --
     thrust::device_vector<uint8_t> vertex_batch_ids(data.F,0);
     thrust::device_vector<uint8_t> edge_batch_ids(E,0);
+    thrust::device_vector<uint8_t> face_batch_ids(F,0);
     thrust::device_vector<int> vptr(B+1,0);
     thrust::device_vector<int> eptr(B+1,0);
     thrust::device_vector<int> fptr(B+1,0);
@@ -710,7 +782,7 @@ PointCloudData create_dual_mesh(PointCloudData& data){
     // todo: allow for device_vectors in constructor
     PointCloudData dual{
         ftrs,pos,faces,faces_csum,edges,
-        vertex_batch_ids,edge_batch_ids,
+        vertex_batch_ids,edge_batch_ids,face_batch_ids,
         vptr,eptr,fptr,
         data.bounding_boxes,B,V,E,F};
     //dual.faces_eptr = std::move(faces_csum);

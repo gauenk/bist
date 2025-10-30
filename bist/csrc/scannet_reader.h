@@ -19,15 +19,15 @@ struct ScanNetScene {
     std::vector<uint32_t> faces;
     std::vector<uint32_t> faces_eptr;
     int size;                // Number of points
-    int nfaces; // number of pairs
+    int nfaces; // number of pairs (?... num faces?)
     float xmin, xmax, ymin, ymax, zmin, zmax;
     
     ScanNetScene();
-    bool read_ply(const std::filesystem::path& scene_path);
+    bool read_ply(const std::filesystem::path& scene_path, bool use_rgb2lab=true);
     bool write_ply_with_fn(const std::filesystem::path& scene_path,
                    const std::filesystem::path& output_root,  PointCloudDataHost& data);
     bool write_ply(const std::filesystem::path& ply_file, PointCloudDataHost& data, 
-                   bool write_edges=true, bool write_faces=true);
+                   bool use_rgb2lab=true, bool write_edges=true, bool write_faces=true);
  
     bool write_spix_ply_with_fn(const std::filesystem::path& scene_path, 
                         const std::filesystem::path& output_root, const SuperpixelParams3dHost& data);
@@ -51,7 +51,7 @@ std::vector<std::filesystem::path> get_scene_files(std::filesystem::path root);
 
 // Main function - returns (ftrs_cu, pos_cu, dim_sizes_cu, nnodes_cu, total_nodes, batchsize)
 // std::tuple<float3*,float3*,uint32_t*,uint8_t*,uint8_t*,int*,int*,float*,uint32_t*,int*>
-PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files);
+PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files, bool use_rgb2lab=true);
 
 // bool write_scene(const std::vector<std::filesystem::path>& scene_files, const std::filesystem::path& output_root, 
 //                 float3* ftrs, float3* pos, uint32_t* edges, int* ptr, int* eptr, uint8_t* gcolor, uint32_t* labels=nullptr);
@@ -60,3 +60,6 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
 
 bool write_spix(const std::vector<std::filesystem::path>& scene_files, 
                 const std::filesystem::path& output_root, SuperpixelParams3d& spix_params);
+
+float3 rgb_to_lab(unsigned char R_in, unsigned char G_in, unsigned char B_in);
+std::array<unsigned char,3> lab_to_rgb(float L_in, float a_in, float b_in);

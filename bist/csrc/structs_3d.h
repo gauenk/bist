@@ -106,7 +106,7 @@ struct SuperpixelParams3d{
   }
   
   
-  void comp_csum_nspix(){
+  void comp_nspix_csum(){
     uint32_t* nspix_ptr = thrust::raw_pointer_cast(nspix.data());
     uint32_t* csum_ptr = thrust::raw_pointer_cast(csum_nspix.data());
     thrust::inclusive_scan(thrust::device, nspix_ptr, nspix_ptr + B, csum_ptr + 1);
@@ -242,6 +242,7 @@ struct SpixMetaData {
     int niters;
     int niters_seg;
     int sm_start;
+    float data_scale;
     int sp_size;
     float sigma2_app;
     float sigma2_size;
@@ -250,15 +251,18 @@ struct SpixMetaData {
     float split_alpha;
     int target_nspix;
     int nspix_buffer_mult;
+    bool use_dual;
     
     // Could be const after initialization
-    SpixMetaData(int niters, int niters_seg, int sm_start, int sp_size,
+    SpixMetaData(int niters, int niters_seg, int sm_start, 
+                 float data_scale, int sp_size,
                  float sigma2_app, float sigma2_size, float potts,
                  float alpha, float split_alpha, int target_nspix,
-                 int nspix_buffer_mult) :
+                 int nspix_buffer_mult, bool use_dual) :
         niters(niters)
         , niters_seg(niters_seg)
         , sm_start(sm_start)
+        , data_scale(data_scale)
         , sp_size(sp_size)
         , sigma2_app(sigma2_app)
         , sigma2_size(sigma2_size)
@@ -267,6 +271,7 @@ struct SpixMetaData {
         , split_alpha(split_alpha)
         , target_nspix(target_nspix)
         , nspix_buffer_mult(nspix_buffer_mult)
+        , use_dual(use_dual)
     {}
 };
 
@@ -287,6 +292,7 @@ struct PointCloudData {
     thrust::device_vector<uint8_t> gcolors;
     thrust::device_vector<uint8_t> vertex_batch_ids;
     thrust::device_vector<uint8_t> edge_batch_ids;
+    thrust::device_vector<uint8_t> face_batch_ids;
     thrust::device_vector<int> vptr;
     thrust::device_vector<int> eptr;
     thrust::device_vector<int> fptr;
@@ -419,6 +425,7 @@ struct PointCloudData {
       , gcolors(other.gcolors)
       , vertex_batch_ids(other.vertex_batch_ids)
       , edge_batch_ids(other.edge_batch_ids)
+      , face_batch_ids(other.face_batch_ids)
       , vptr(other.vptr)
       , eptr(other.eptr)
       , fptr(other.fptr)
@@ -439,6 +446,7 @@ struct PointCloudData {
                 const thrust::device_vector<uint32_t>& edges_h,
                 const std::vector<uint8_t>& vertex_batch_ids_h,
                 const std::vector<uint8_t>& edge_batch_ids_h,
+                const std::vector<uint8_t>& face_batch_ids_h,
                 const std::vector<int>& vptr_h,
                 const std::vector<int>& eptr_h,
                 const std::vector<int>& fptr_h,
@@ -451,6 +459,7 @@ struct PointCloudData {
       , edges(edges_h)
       , vertex_batch_ids(vertex_batch_ids_h.begin(), vertex_batch_ids_h.end())
       , edge_batch_ids(edge_batch_ids_h.begin(), edge_batch_ids_h.end())
+      , face_batch_ids(face_batch_ids_h.begin(), face_batch_ids_h.end())
       , vptr(vptr_h.begin(), vptr_h.end())
       , eptr(eptr_h.begin(), eptr_h.end())
       , fptr(fptr_h.begin(), fptr_h.end())
@@ -466,6 +475,7 @@ struct PointCloudData {
                 const thrust::device_vector<uint32_t>& edges_d,
                 const thrust::device_vector<uint8_t>& vertex_batch_ids_d,
                 const thrust::device_vector<uint8_t>& edge_batch_ids_d,
+                const thrust::device_vector<uint8_t>& face_batch_ids_d,
                 const thrust::device_vector<int>& vptr_d,
                 const thrust::device_vector<int>& eptr_d,
                 const thrust::device_vector<int>& fptr_d,
@@ -478,6 +488,7 @@ struct PointCloudData {
       , edges(edges_d)
       , vertex_batch_ids(vertex_batch_ids_d)
       , edge_batch_ids(edge_batch_ids_d)
+      , face_batch_ids(face_batch_ids_d)
       , vptr(vptr_d)
       , eptr(eptr_d)
       , fptr(fptr_d)
@@ -509,6 +520,7 @@ struct PointCloudDataHost {
     std::vector<uint8_t> gcolors;
     std::vector<uint8_t> vertex_batch_ids;
     std::vector<uint8_t> edge_batch_ids;
+    std::vector<uint8_t> face_batch_ids;
     std::vector<float> bounding_boxes;
     std::vector<uint32_t> labels;
     
@@ -597,34 +609,41 @@ struct PointCloudDataHost {
             }
         }
         
-        // Extract face data [warning; batching problems with extraction; "F+1" vs "F" for each batch... maybe not a problem...]
+        // Extract face data [warning; batching questionable... maybe not a problem...]
         if ((F > 0) && (device_data.faces_eptr.size()>0)) {
             faces_eptr.resize(F+1);
-            printf("%d %d\n",F,device_data.faces_eptr.size());
+            //printf("%d %d\n",F,device_data.faces_eptr.size());
             thrust::copy(device_data.faces_eptr.begin() + f_start,
-                        device_data.faces_eptr.begin() + F+1,
+                        device_data.faces_eptr.begin() + f_end+1,
                         faces_eptr.begin());
             uint32_t start = faces_eptr[0];
             uint32_t end = faces_eptr[F];
             uint32_t size = end - start;
-            //printf("start,end: %d %d\n",start,end);
+            printf("[faces] start,end: %d %d %d %d\n",start,end,f_start,f_end);
             faces.resize(size);
             thrust::copy(device_data.faces.begin() + start,
                         device_data.faces.begin() + end,
                         faces.begin());
+            
+            // Extract edge batch IDs if they exist
+            if (!device_data.face_batch_ids.empty()) {
+                face_batch_ids.resize(F);
+                thrust::copy(device_data.face_batch_ids.begin() + f_start,
+                           device_data.face_batch_ids.begin() + f_end,
+                           face_batch_ids.begin());
+            }
             if(!device_data.face_labels.empty()){
                 face_labels.resize(F);
                 thrust::copy(device_data.face_labels.begin() + f_start,
-                             device_data.face_labels.begin() + F,
+                             device_data.face_labels.begin() + f_end,
                              face_labels.begin());
             }
             if(!device_data.face_colors.empty()){
                 face_colors.resize(F);
                 thrust::copy(device_data.face_colors.begin() + f_start,
-                             device_data.face_colors.begin() + F,
+                             device_data.face_colors.begin() + f_end, 
                              face_colors.begin());
             }
-
         }
         
         // Extract CSR edges if they exist

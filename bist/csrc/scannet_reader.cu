@@ -31,7 +31,7 @@ std::vector<std::filesystem::path> get_scene_files(std::filesystem::path root) {
 }
 
 
-PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files) {
+PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files, bool use_rgb2lab) {
     
     // Initialize batch processing
     const int batch_size = scene_files.size();
@@ -60,6 +60,7 @@ PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files)
     std::vector<uint8_t> vertex_batch_ids(total_vertices, 0);
     std::vector<uint32_t> faces(3 * total_faces, 0);
     std::vector<uint32_t> faces_eptr(total_faces+1, 0);
+    std::vector<uint8_t> face_batch_ids(total_faces, 0);
 
     
     // Edge data (stored on device)
@@ -68,12 +69,13 @@ PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files)
 
     // Second pass: Load and copy scene data
     int vertex_offset = 0;
+    // int face_offset = 0;
     for (int batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
         const auto& scene_file = scene_files[batch_idx];
         
         // Load scene data
         ScanNetScene scene;
-        if (!scene.read_ply(scene_file)) {
+        if (!scene.read_ply(scene_file,use_rgb2lab)) {
             fprintf(stderr, "Failed to read scene file: %s\n", scene_file.c_str());
             exit(1);
         }
@@ -93,6 +95,7 @@ PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files)
         const int face_offset = face_ptr[batch_idx];
         memcpy(&faces[3 * face_offset], scene.faces.data(), 3 * scene_face_count * sizeof(uint32_t));
         memcpy(&faces_eptr[face_offset], scene.faces_eptr.data(), (scene_face_count+1)* sizeof(uint32_t));
+        std::fill(face_batch_ids.begin() + face_offset, face_batch_ids.begin() + face_offset + scene.nfaces, batch_idx);
 
         // Extract and append edges
         thrust::device_vector<uint32_t> scene_edges = extract_edges_from_pairs(scene.e0, scene.e1);
@@ -115,6 +118,7 @@ PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files)
         bounding_boxes[bbox_offset + 5] = scene.zmax;
         
         vertex_offset += scene_vertex_count;
+        // face_offset += scene.nfaces;
     }
 
     // Print summary information
@@ -149,7 +153,7 @@ PointCloudData read_scene(const std::vector<std::filesystem::path>& scene_files)
 
     PointCloudData data(
         features, positions, faces, faces_eptr, all_edges,
-        vertex_batch_ids, edge_batch_ids, vertex_ptr, edge_ptr, face_ptr,
+        vertex_batch_ids, edge_batch_ids, face_batch_ids, vertex_ptr, edge_ptr, face_ptr,
         bounding_boxes, batch_size, total_vertices, total_edges, total_faces
     );
     return data;
@@ -172,9 +176,9 @@ bool write_scene(const std::vector<std::filesystem::path>& scene_files,
         auto& scene_file = scene_files[batch_index];
         ScanNetScene scene;
         PointCloudDataHost host_data(data,batch_index);
-        for (int ix = 0; ix< 10; ix++){
-            printf("ftrs: %2.2f %2.2f %2.2f\n",host_data.ftrs[ix].x,host_data.ftrs[ix].y,host_data.ftrs[ix].z);
-        }
+        // for (int ix = 0; ix< 10; ix++){
+        //     printf("ftrs: %2.2f %2.2f %2.2f\n",host_data.ftrs[ix].x,host_data.ftrs[ix].y,host_data.ftrs[ix].z);
+        // }
         // if(!scene.write_ply_with_fn(scene_file,output_root,ftrs_b,pos_b,edges_b,nnodes,nedges,gcolor_b,labels_b)){
         if(!scene.write_ply_with_fn(scene_file,output_root,host_data)){
 
@@ -191,6 +195,9 @@ int get_vertex_count(const std::filesystem::path& scene_path) {
     // -- get filenames --
     std::string scene_name = scene_path.filename().string();
     std::filesystem::path ply_file = scene_path / (scene_name + "_vh_clean_2.ply");
+    if (!std::filesystem::exists(ply_file)) {
+        ply_file = scene_path / (scene_name + ".ply");
+    }
     std::ifstream file(ply_file.string());
     if (!file.is_open()) {
         printf("didn't get the vertex count!\n");
@@ -213,6 +220,9 @@ int get_face_count(const std::filesystem::path& scene_path) {
     // -- get filenames --
     std::string scene_name = scene_path.filename().string();
     std::filesystem::path ply_file = scene_path / (scene_name + "_vh_clean_2.ply");
+    if (!std::filesystem::exists(ply_file)) {
+        ply_file = scene_path / (scene_name + ".ply");
+    }
     std::ifstream file(ply_file.string());
     if (!file.is_open()) {
         printf("didn't get the vertex count!\n");
@@ -235,7 +245,7 @@ ScanNetScene::ScanNetScene() : size(0),
     ymin(FLT_MAX), ymax(-FLT_MAX),
     zmin(FLT_MAX), zmax(-FLT_MAX) {}
     
-bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
+bool ScanNetScene::read_ply(const std::filesystem::path& scene_path, bool use_rgb2lab) {
 
     // -- helper --
     std::string line;
@@ -244,6 +254,9 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
     std::string scene_name = scene_path.filename().string();
     std::filesystem::path info_file = scene_path / (scene_name + ".txt");
     std::filesystem::path ply_file = scene_path / (scene_name + "_vh_clean_2.ply");
+    if (!std::filesystem::exists(ply_file)) {
+        ply_file = scene_path / (scene_name + ".ply");
+    }
     std::cout << info_file << std::endl;
     std::cout << ply_file << std::endl;
 
@@ -349,7 +362,22 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
             // -- append --
             float3 pos_i = make_float3(x,y,z);
             pos[i] = pos_i;
-            float3 ftr_i = make_float3(r/255.0f,g/255.0f,b/255.0f);
+
+            // -- read rgb --
+            float3 ftr_i;
+            if (use_rgb2lab){
+                ftr_i = rgb_to_lab(r,g,b);
+            }else{
+                ftr_i = make_float3(r/255.0f,g/255.0f,b/255.0f);
+            }
+            
+            // auto rgb_chk = lab_to_rgb(ftr_i.x,ftr_i.y,ftr_i.z);
+            // if (i < 10){
+            // printf("r,g,b: %d %d %d -> lab: %2.2f %2.2f %2.2f -> rgb: %d %d %d\n",
+            //         r,g,b,
+            //         ftr_i.x,ftr_i.y,ftr_i.z,
+            //         rgb_chk[0],rgb_chk[1],rgb_chk[2]);
+            // }
             // if (i < 10){
             //     printf("%2.2f %2.2f %2.2f\n",ftr_i.x,ftr_i.y,ftr_i.z);
             // }else{
@@ -429,10 +457,27 @@ bool ScanNetScene::read_ply(const std::filesystem::path& scene_path) {
             // ftr[3*i+1] = g / 255.0f;
             // ftr[3*i+2] = b / 255.0f;
 
+            // -- read rgb --
+            float3 ftr_i;
+            if (use_rgb2lab){
+                ftr_i = rgb_to_lab(r,g,b);
+            }else{
+                ftr_i = make_float3(r/255.0f,g/255.0f,b/255.0f);
+            }
+            //auto rgb_chk = lab_to_rgb(ftr_i.x,ftr_i.y,ftr_i.z);
+            // if (i < 10){
+            // printf("r,g,b: %d %d %d -> lab: %2.2f %2.2f %2.2f -> rgb: %d %d %d\n",
+            //         r,g,b,
+            //         ftr_i.x,ftr_i.y,ftr_i.z,
+            //         rgb_chk[0],rgb_chk[1],rgb_chk[2]);
+            // }
+
+
             // -- append --
             float3 pos_i = make_float3(x,y,z);
             pos[i] = pos_i;
-            float3 ftr_i = make_float3(r/255.0f,g/255.0f,b/255.0f);
+            // float3 ftr_i = make_float3(r/255.0f,g/255.0f,b/255.0f);
+
             ftr[i] = ftr_i;
         }
         
@@ -469,7 +514,8 @@ bool ScanNetScene::write_ply_with_fn(const std::filesystem::path& scene_path,
 }
 
 
-bool ScanNetScene::write_ply(const std::filesystem::path& ply_file, PointCloudDataHost& data, bool write_edges, bool write_faces) {
+bool ScanNetScene::write_ply(const std::filesystem::path& ply_file, PointCloudDataHost& data, 
+                            bool use_rgb2lab, bool write_edges, bool write_faces) {
 
     // -- delete existing file if it exists --
     if (std::filesystem::exists(ply_file)) {
@@ -535,13 +581,26 @@ bool ScanNetScene::write_ply(const std::filesystem::path& ply_file, PointCloudDa
         x = pos_i.x;
         y = pos_i.y;
         z = pos_i.z;
-        r = static_cast<unsigned char>(ftr_i.x * 255.0f);
-        g = static_cast<unsigned char>(ftr_i.y * 255.0f);
-        b = static_cast<unsigned char>(ftr_i.z * 255.0f);
+        // r = static_cast<unsigned char>(ftr_i.x * 255.0f);
+        // g = static_cast<unsigned char>(ftr_i.y * 255.0f);
+        // b = static_cast<unsigned char>(ftr_i.z * 255.0f);
+
+        // -- lab -> rgb --
+        if(use_rgb2lab){
+            auto rgb = lab_to_rgb(ftr_i.x,ftr_i.y,ftr_i.z);
+            r = rgb[0];
+            g = rgb[1];
+            b = rgb[2];
+        }else{
+            r = static_cast<unsigned char>(ftr_i.x * 255.0f);
+            g = static_cast<unsigned char>(ftr_i.y * 255.0f);
+            b = static_cast<unsigned char>(ftr_i.z * 255.0f);
+        }
+
         alpha = 255;
         gcolor_id = (!data.gcolors.empty()) ? data.gcolors[i] : 0;
         label =  (!data.labels.empty())? data.labels[i] : 0;
-        //printf("label: %ld\n",label);
+        // //printf("label: %ld\n",label);
         // if (i < 10){
         //     printf("x,y,z r,g,b: %2.2f %2.2f %2.2f %d %d %d\n",x,y,z,r,g,b);
         // }
@@ -586,10 +645,23 @@ bool ScanNetScene::write_ply(const std::filesystem::path& ply_file, PointCloudDa
             unsigned char num = end - start;
             //if (num == 0){ continue; }
             file.write(reinterpret_cast<const char*>(&num), sizeof(unsigned char));
+
+            // bool any_zero = false;
+            // for (int index = start; index < end; index++){
+            //     any_zero = any_zero || (data.faces[index] == 0);
+            // }
+
+            // if (any_zero){
+            //     printf("Num: face[%d] %d\n",face,end-start);
+            // }
             for (int index = start; index < end; index++){
                 int v = data.faces[index];
+                // if (any_zero){
+                //     printf("face[%d] %d\n",face,v);
+                // }
                 file.write(reinterpret_cast<const char*>(&v), sizeof(int));
             }
+
             if(!data.face_colors.empty()){
                 uint32_t label = 0;
                 if (!data.face_labels.empty()){
@@ -744,9 +816,15 @@ bool ScanNetScene::write_spix_ply(const std::filesystem::path& ply_file, const S
         float cov_y = _cov.y;
         float cov_z = _cov.z;
 
-        r = static_cast<unsigned char>(_ftrs.x * 255.0f);
-        g = static_cast<unsigned char>(_ftrs.y * 255.0f);
-        b = static_cast<unsigned char>(_ftrs.z * 255.0f);
+        // -- lab -> rgb --
+        auto rgb = lab_to_rgb(_ftrs.x,_ftrs.y,_ftrs.z);
+        r = rgb[0];
+        g = rgb[1];
+        b = rgb[2];
+
+        // r = static_cast<unsigned char>(_ftrs.x * 255.0f);
+        // g = static_cast<unsigned char>(_ftrs.y * 255.0f);
+        // b = static_cast<unsigned char>(_ftrs.z * 255.0f);
         alpha = 255;
         //printf("label: %ld\n",label);
         //printf("x,y,z r,g,b: %2.2f %2.2f %2.2f %2.2f %2.2f %2.2f\n",x,y,z,ftrs[3*i+0],ftrs[3*i+1] ,ftrs[3*i+2] );
@@ -773,3 +851,102 @@ bool ScanNetScene::write_spix_ply(const std::filesystem::path& ply_file, const S
     return true;
 
 };
+
+
+float3 rgb_to_lab(unsigned char R_in, unsigned char G_in, unsigned char B_in) {
+    // normalize to [0,1]
+    double R = R_in / 255.0;
+    double G = G_in / 255.0;
+    double B = B_in / 255.0;
+
+    // gamma correction (sRGB to linear)
+    auto f = [](double c) {
+        return (c <= 0.04045) ? (c / 12.92) : std::pow((c + 0.055) / 1.055, 2.4);
+    };
+    double r = f(R);
+    double g = f(G);
+    double b = f(B);
+
+    // linear RGB to XYZ (D65)
+    double X = r*0.4124564 + g*0.3575761 + b*0.1804375;
+    double Y = r*0.2126729 + g*0.7151522 + b*0.0721750;
+    double Z = r*0.0193339 + g*0.1191920 + b*0.9503041;
+
+    // normalize by reference white
+    double Xr = 0.950456;
+    double Yr = 1.0;
+    double Zr = 1.088754;
+
+    double xr = X / Xr;
+    double yr = Y / Yr;
+    double zr = Z / Zr;
+
+    double epsilon = 0.008856;
+    double kappa   = 903.3;
+
+    auto fxyz = [&](double t) {
+        return (t > epsilon) ? std::pow(t, 1.0/3.0) : (kappa * t + 16.0) / 116.0;
+    };
+
+    double fx = fxyz(xr);
+    double fy = fxyz(yr);
+    double fz = fxyz(zr);
+
+    float L = static_cast<float>(116.0 * fy - 16.0);
+    float A = static_cast<float>(500.0 * (fx - fy));
+    float Bv = static_cast<float>(200.0 * (fy - fz));
+
+    // match your kernel’s scaling
+    //return { L / -100.0f, A / 100.0f, Bv / 100.0f };
+    return make_float3(L / -100.0f, A / 100.0f, Bv / 100.0f);
+}
+
+// Convert one Lab pixel (scaled like kernel) to RGB (0–255 ints)
+std::array<unsigned char,3> lab_to_rgb(float L_in, float a_in, float b_in) {
+    // Undo kernel’s scaling
+    double L  = L_in * (-100.0);
+    double La = a_in * 100.0;
+    double Lb = b_in * 100.0;
+
+    // LAB -> XYZ
+    double fy = (L + 16.0) / 116.0;
+    double fx = La / 500.0 + fy;
+    double fz = fy - Lb / 200.0;
+
+    auto f_inv = [](double t) {
+        return (std::pow(t,3) > 0.008856) ? std::pow(t,3) : (t - 16.0/116.0) / 7.787;
+    };
+
+    double x = f_inv(fx);
+    double y = f_inv(fy);
+    double z = f_inv(fz);
+
+    // Reference white (D65)
+    double X = 0.950456 * x;
+    double Y = 1.000000 * y;
+    double Z = 1.088754 * z;
+
+    // XYZ -> linear RGB
+    double R =  3.2406*X + -1.5372*Y + -0.4986*Z;
+    double G = -0.9689*X +  1.8758*Y +  0.0415*Z;
+    double B =  0.0557*X + -0.2040*Y +  1.0570*Z;
+
+    auto gamma_correct = [](double c) {
+        return (c > 0.0031308) ? (1.055 * std::pow(c, 1.0/2.4) - 0.055)
+                               : (12.92 * c);
+    };
+
+    double r = gamma_correct(R);
+    double g = gamma_correct(G);
+    double b = gamma_correct(B);
+
+    // Clamp to [0,1]
+    r = std::min(1.0, std::max(0.0, r));
+    g = std::min(1.0, std::max(0.0, g));
+    b = std::min(1.0, std::max(0.0, b));
+
+    // Scale to [0,255] ints
+    return { static_cast<int>(std::round(r*255.0)),
+             static_cast<int>(std::round(g*255.0)),
+             static_cast<int>(std::round(b*255.0)) };
+}
