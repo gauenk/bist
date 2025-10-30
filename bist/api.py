@@ -178,6 +178,7 @@ def get_pooled_video(vid, mask, use3d=False, return_pool=True, cdim=-1):
     vid = vid.float()  # Ensure the video tensor is float
     T, H, W, C = vid.shape  # Unpack the shape with (T, H, W, C)
     mask = mask.long()  # Ensure mask is long type for indexing
+    # print(vid.shape,mask.shape)
 
     S = mask.max().item() + 1  # The number of possible mask values
     mask_flat = mask.view(T, H * W)  # Flatten spatially

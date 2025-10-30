@@ -246,7 +246,7 @@ __device__ float2 calc_joint(float* imgC, int* seg,
 
     // -- potts term --
     res = res - beta*neigh_neq;
-    res = res - 100*(count<=10);
+    // res = res - 100*(count<=10);
 
     // -- update res --
     if( res>res_max.x ){

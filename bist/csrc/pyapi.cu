@@ -112,7 +112,7 @@ torch::Tensor main_loop(torch::Tensor vid, torch::Tensor flows,
     if (rgb2lab_b) {
       rgb2lab(img_rgb,img_lab,nbatch,npix); // convert image to LAB
     }else {
-      cudaMemcpy(img_lab,img_rgb,npix*3,cudaMemcpyDeviceToDevice);
+      cudaMemcpy(img_lab,img_rgb,npix*3*sizeof(float),cudaMemcpyDeviceToDevice); // one at a time
     }
 
     // -- unpack flow --
@@ -373,7 +373,7 @@ batched_bass_cuda(const torch::Tensor vid,
       rgb2lab(img_rgb,img_lab,nbatch,npix); // convert image to LAB
   }else {
       img_lab = img_rgb;
-      // cudaMemcpy(img_lab,img_rgb,npix*3,cudaMemcpyDeviceToDevice);
+      // cudaMemcpy(img_lab,img_rgb,nbatch*npix*3,cudaMemcpyDeviceToDevice);
   }
 
 
