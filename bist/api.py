@@ -35,6 +35,7 @@ def run(vid,flows,**kwargs):
     rgb2lab = kwargs['rgb2lab']
     # sm_start = kwargs['sm_start']
     use_sm = kwargs['use_sm']
+    if niters == -1: niters = sp_size
 
     # -- prep --
     assert vid.shape[-1] == 3,"Last Dimension Must be 3 Color Channels or 3 Features"

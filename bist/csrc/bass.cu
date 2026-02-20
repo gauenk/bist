@@ -70,7 +70,7 @@ __host__ int bass(float* img, int* seg, spix_params* sp_params, bool* border,
       niters = 5000;
     }
     
-    //printf("niters: %d\n",niters);
+    // printf("niters: %d\n",niters);
     for (int idx = 0; idx < niters; idx++) {
 
 
