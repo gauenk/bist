@@ -6,7 +6,10 @@ from einops import rearrange
 from skimage.color import rgb2gray
 from skimage.metrics import peak_signal_noise_ratio as comp_psnr
 from skimage.metrics import structural_similarity as compute_ssim_ski
-from skvideo.measure import strred as comp_strred
+try:
+    from skvideo.measure import strred as comp_strred
+except:
+    comp_strred = None
 
 def compute_asa(sp,gt):
 
@@ -193,9 +196,12 @@ def compute_strred(clean,deno,div=1):
         deno = rgb2gray(deno,channel_axis=-1)
 
     # -- compute --
-    with np.errstate(invalid='ignore'):
-        outs = comp_strred(clean,deno)
-    strred = outs[1] # get float
+    if not(comp_strred is None):
+        with np.errstate(invalid='ignore'):
+            outs = comp_strred(clean,deno)
+        strred = outs[1] # get float
+    else:
+        strred = -1.0
     return strred
 
 def _blocking_effect_factor(im):
